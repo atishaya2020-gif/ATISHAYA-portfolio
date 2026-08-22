@@ -1,0 +1,28 @@
+# Environment / secrets
+.env
+backend/.env
+
+# Virtual environments
+backend/.venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Node
+frontend/node_modules/
+
+# Django
+backend/db.sqlite3
+backend/staticfiles/
+backend/media/
+
+# GeoIP database
+*.mmdb
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

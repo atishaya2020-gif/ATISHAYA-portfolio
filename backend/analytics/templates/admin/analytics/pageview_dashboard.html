@@ -1,0 +1,142 @@
+{% extends "admin/base_site.html" %}
+
+{% block title %}Analytics Dashboard | {{ site_title|default:'Django site admin' }}{% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    .analytics-dashboard { max-width: 960px; }
+    .analytics-dashboard h1 { margin-bottom: 8px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 16px 0 24px; }
+    .metric-card { background: #fff; border: 1px solid var(--hairline-color); border-radius: 4px; padding: 14px 16px; }
+    .metric-card .value { font-size: 28px; font-weight: 700; line-height: 1.2; }
+    .metric-card .label { color: var(--body-quiet-color); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+    .dashboard-section { background: #fff; border: 1px solid var(--hairline-color); border-radius: 4px; margin-bottom: 20px; }
+    .dashboard-section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; padding: 10px 14px; border-bottom: 1px solid var(--hairline-color); margin: 0; }
+    .dashboard-section table { width: 100%; border-collapse: collapse; }
+    .dashboard-section th, .dashboard-section td { padding: 8px 14px; text-align: left; border-bottom: 1px solid var(--hairline-color); font-size: 13px; }
+    .dashboard-section tr:last-child td { border-bottom: none; }
+    .dashboard-section th.num, .dashboard-section td.num { text-align: right; width: 90px; }
+    .empty-state { color: var(--body-quiet-color); font-style: italic; padding: 12px 14px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+  </style>
+{% endblock %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:analytics_pageview_changelist' %}">Page views</a>
+    &rsaquo; Analytics Dashboard
+  </div>
+{% endblock %}
+
+{% block content %}
+<div class="analytics-dashboard">
+
+  <h1>Analytics Overview</h1>
+
+  <div class="metric-grid">
+    <div class="metric-card"><div class="value">{{ stats.total_views }}</div><div class="label">Total Views</div></div>
+    <div class="metric-card"><div class="value">{{ stats.unique_visitors }}</div><div class="label">Unique Visitors</div></div>
+    <div class="metric-card"><div class="value">{{ stats.views_today }}</div><div class="label">Today</div></div>
+    <div class="metric-card"><div class="value">{{ stats.views_last_7_days }}</div><div class="label">Last 7 Days</div></div>
+    <div class="metric-card"><div class="value">{{ stats.views_last_30_days }}</div><div class="label">Last 30 Days</div></div>
+  </div>
+
+  <h1>Traffic</h1>
+
+  <div class="two-col">
+    <div class="dashboard-section">
+      <h2>Top Pages</h2>
+      {% if top_pages %}
+        <table>
+          <tr><th>Path</th><th class="num">Views</th></tr>
+          {% for page in top_pages %}
+            <tr><td>{{ page.path }}</td><td class="num">{{ page.views }}</td></tr>
+          {% endfor %}
+        </table>
+      {% else %}
+        <p class="empty-state">No page views yet.</p>
+      {% endif %}
+    </div>
+
+    <div class="dashboard-section">
+      <h2>Top Referrers</h2>
+      {% if top_referrers %}
+        <table>
+          <tr><th>Referrer</th><th class="num">Views</th></tr>
+          {% for ref in top_referrers %}
+            <tr><td>{{ ref.referrer }}</td><td class="num">{{ ref.views }}</td></tr>
+          {% endfor %}
+        </table>
+      {% else %}
+        <p class="empty-state">No referrer data yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <h1>Audience</h1>
+
+  <div class="two-col">
+    <div class="dashboard-section">
+      <h2>Countries</h2>
+      {% if top_countries %}
+        <table>
+          <tr><th>Country</th><th class="num">Views</th></tr>
+          {% for c in top_countries %}
+            <tr><td>{{ c.country|default:c.country_code }} ({{ c.country_code }})</td><td class="num">{{ c.views }}</td></tr>
+          {% endfor %}
+        </table>
+      {% else %}
+        <p class="empty-state">No country data yet.</p>
+      {% endif %}
+    </div>
+
+    <div class="dashboard-section">
+      <h2>Devices</h2>
+      <table>
+        <tr><th>Device</th><th class="num">Views</th></tr>
+        {% for d in devices %}
+          <tr><td>{{ d.device }}</td><td class="num">{{ d.views }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  <h1>Activity</h1>
+
+  <div class="two-col">
+    <div class="dashboard-section">
+      <h2>Daily Views — Last 30 Days</h2>
+      <table>
+        <tr><th>Date</th><th class="num">Views</th></tr>
+        {% for day in daily_views %}
+          <tr><td>{{ day.date|date:"Y-m-d" }}</td><td class="num">{{ day.views }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <div class="dashboard-section">
+      <h2>Recent Visits</h2>
+      {% if recent_visits %}
+        <table>
+          <tr><th>Time</th><th>Path</th><th>Country</th><th>Device</th><th>Referrer</th></tr>
+          {% for visit in recent_visits %}
+            <tr>
+              <td>{{ visit.time|date:"Y-m-d H:i" }}</td>
+              <td>{{ visit.path }}</td>
+              <td>{{ visit.country|default:"—" }}</td>
+              <td>{{ visit.device }}</td>
+              <td>{{ visit.referrer|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </table>
+      {% else %}
+        <p class="empty-state">No page views yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}
