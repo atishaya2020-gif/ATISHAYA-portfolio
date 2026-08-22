@@ -1,6 +1,75 @@
-from rest_framework.test import APITestCase
+import os
+from io import StringIO
+from unittest.mock import patch
+
+from django.contrib.auth.models import User
+from django.core.management import call_command
+from django.test import TestCase, override_settings
+from rest_framework.test import APITestCase, APIClient
 
 from .models import Profile, Project, Technology
+
+
+class BootstrapAdminTests(TestCase):
+    COMMAND = 'bootstrap_admin'
+
+    def test_missing_env_vars_skips_safely(self):
+        out = StringIO()
+        with patch.dict(os.environ, {}, clear=True):
+            call_command(self.COMMAND, stdout=out)
+        output = out.getvalue()
+        self.assertIn('skipped', output)
+        self.assertEqual(User.objects.count(), 0)
+
+    def test_first_run_creates_superuser(self):
+        out = StringIO()
+        env = {
+            'ADMIN_USERNAME': 'testadmin',
+            'ADMIN_EMAIL': 'admin@test.com',
+            'ADMIN_PASSWORD': 'secret-pass-123',
+        }
+        with patch.dict(os.environ, env, clear=True):
+            call_command(self.COMMAND, stdout=out)
+        self.assertTrue(User.objects.filter(username='testadmin').exists())
+        self.assertTrue(User.objects.get(username='testadmin').is_superuser)
+        self.assertIn('created successfully', out.getvalue())
+
+    def test_second_run_does_not_duplicate(self):
+        env = {
+            'ADMIN_USERNAME': 'testadmin',
+            'ADMIN_EMAIL': 'admin@test.com',
+            'ADMIN_PASSWORD': 'secret-pass-123',
+        }
+        with patch.dict(os.environ, env, clear=True):
+            call_command(self.COMMAND, stdout=StringIO())
+            call_command(self.COMMAND, stdout=StringIO())
+        self.assertEqual(User.objects.filter(username='testadmin').count(), 1)
+
+    def test_password_never_appears_in_output(self):
+        out = StringIO()
+        env = {
+            'ADMIN_USERNAME': 'secureadmin',
+            'ADMIN_EMAIL': 'secure@test.com',
+            'ADMIN_PASSWORD': 'my-super-secret-password',
+        }
+        with patch.dict(os.environ, env, clear=True):
+            call_command(self.COMMAND, stdout=out)
+        self.assertNotIn('my-super-secret-password', out.getvalue())
+
+    def test_existing_user_password_not_overwritten(self):
+        User.objects.create_user('existing', 'exist@test.com', 'old-password')
+        env = {
+            'ADMIN_USERNAME': 'existing',
+            'ADMIN_EMAIL': 'exist@test.com',
+            'ADMIN_PASSWORD': 'new-password',
+        }
+        out = StringIO()
+        with patch.dict(os.environ, env, clear=True):
+            call_command(self.COMMAND, stdout=out)
+        user = User.objects.get(username='existing')
+        self.assertTrue(user.check_password('old-password'))
+        self.assertFalse(user.check_password('new-password'))
+        self.assertIn('already exists', out.getvalue())
 
 
 class HealthEndpointTests(APITestCase):
