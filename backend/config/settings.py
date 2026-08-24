@@ -179,6 +179,7 @@ else:
     DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', '')
 
 CONTACT_NOTIFICATION_EMAIL = os.getenv('CONTACT_NOTIFICATION_EMAIL', os.getenv('DEFAULT_FROM_EMAIL', ''))
+RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
 
 
 # Django REST Framework

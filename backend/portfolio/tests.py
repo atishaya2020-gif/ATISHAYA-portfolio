@@ -335,7 +335,15 @@ class ContactEndpointTests(APITestCase):
     def test_admin_registration(self):
         self.assertTrue(admin.site.is_registered(ContactMessage))
 
-    def test_email_notification_sent_on_valid_submission(self):
+    @override_settings(
+        RESEND_API_KEY='re_test_key_123',
+        CONTACT_NOTIFICATION_EMAIL='owner@example.com',
+    )
+    @patch('resend.Emails.send')
+    def test_email_notification_sent_via_resend_on_valid_submission(
+        self, mock_resend_send
+    ):
+        mock_resend_send.return_value = {'id': 'msg_12345'}
         payload = {
             'name': 'Alice Smith',
             'email': 'alice@example.com',
@@ -344,26 +352,38 @@ class ContactEndpointTests(APITestCase):
         }
         response = self.client.post('/api/contact/', payload, format='json')
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(len(mail.outbox), 1)
-        sent_email = mail.outbox[0]
-        self.assertIn('Project Inquiry', sent_email.subject)
-        self.assertIn('Alice Smith', sent_email.body)
-        self.assertIn('alice@example.com', sent_email.body)
-        self.assertIn('Can you build a site for me?', sent_email.body)
-        self.assertEqual(sent_email.reply_to, ['alice@example.com'])
 
-    def test_contact_message_saved_and_201_returned_when_email_fails(self):
+        msg = ContactMessage.objects.get(email='alice@example.com')
+        self.assertEqual(msg.name, 'Alice Smith')
+
+        mock_resend_send.assert_called_once()
+        call_args = mock_resend_send.call_args[0][0]
+        self.assertEqual(call_args['from'], 'onboarding@resend.dev')
+        self.assertEqual(call_args['to'], ['owner@example.com'])
+        self.assertEqual(call_args['reply_to'], 'alice@example.com')
+        self.assertIn('Project Inquiry', call_args['subject'])
+        self.assertIn('Alice Smith', call_args['text'])
+        self.assertIn('alice@example.com', call_args['text'])
+        self.assertIn('Can you build a site for me?', call_args['text'])
+
+    @override_settings(
+        RESEND_API_KEY='re_test_key_123',
+        CONTACT_NOTIFICATION_EMAIL='owner@example.com',
+    )
+    @patch(
+        'resend.Emails.send',
+        side_effect=Exception('Resend API connection timeout'),
+    )
+    def test_contact_message_saved_and_201_returned_when_resend_fails(
+        self, mock_resend_send
+    ):
         payload = {
             'name': 'Bob Miller',
             'email': 'bob@example.com',
             'subject': 'Failure test',
-            'message': 'Testing SMTP failure handling.',
+            'message': 'Testing API failure handling.',
         }
-        with patch(
-            'portfolio.services.contact_email.EmailMessage.send',
-            side_effect=Exception('SMTP connection timed out'),
-        ):
-            response = self.client.post('/api/contact/', payload, format='json')
+        response = self.client.post('/api/contact/', payload, format='json')
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(
@@ -371,8 +391,42 @@ class ContactEndpointTests(APITestCase):
             {'status': 'ok', 'message': 'Your message has been received.'},
         )
         self.assertTrue(ContactMessage.objects.filter(email='bob@example.com').exists())
+        self.assertNotIn('re_test_key_123', str(response.data))
 
-    def test_invalid_submissions_do_not_send_email(self):
+    @patch('resend.Emails.send')
+    def test_missing_resend_api_key_handles_gracefully(self, mock_resend_send):
+        with override_settings(RESEND_API_KEY='', CONTACT_NOTIFICATION_EMAIL='owner@example.com'):
+            payload = {
+                'name': 'No Key User',
+                'email': 'nokey@example.com',
+                'message': 'Testing missing API key.',
+            }
+            response = self.client.post('/api/contact/', payload, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(ContactMessage.objects.filter(email='nokey@example.com').exists())
+        mock_resend_send.assert_not_called()
+
+    @patch('resend.Emails.send')
+    def test_missing_contact_notification_email_handles_gracefully(self, mock_resend_send):
+        with override_settings(RESEND_API_KEY='re_test_key_123', CONTACT_NOTIFICATION_EMAIL=''):
+            payload = {
+                'name': 'No Recipient User',
+                'email': 'norecipient@example.com',
+                'message': 'Testing missing notification email.',
+            }
+            response = self.client.post('/api/contact/', payload, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(ContactMessage.objects.filter(email='norecipient@example.com').exists())
+        mock_resend_send.assert_not_called()
+
+    @override_settings(
+        RESEND_API_KEY='re_test_key_123',
+        CONTACT_NOTIFICATION_EMAIL='owner@example.com',
+    )
+    @patch('resend.Emails.send')
+    def test_invalid_submissions_do_not_send_email(self, mock_resend_send):
         payload = {
             'name': 'Invalid Email User',
             'email': 'not-an-email',
@@ -380,9 +434,14 @@ class ContactEndpointTests(APITestCase):
         }
         response = self.client.post('/api/contact/', payload, format='json')
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(len(mail.outbox), 0)
+        mock_resend_send.assert_not_called()
 
-    def test_throttled_submissions_do_not_send_email(self):
+    @override_settings(
+        RESEND_API_KEY='re_test_key_123',
+        CONTACT_NOTIFICATION_EMAIL='owner@example.com',
+    )
+    @patch('resend.Emails.send')
+    def test_throttled_submissions_do_not_send_email(self, mock_resend_send):
         payload = {
             'name': 'Spammer',
             'email': 'spammer@example.com',
@@ -392,11 +451,11 @@ class ContactEndpointTests(APITestCase):
             res = self.client.post('/api/contact/', payload, format='json')
             self.assertEqual(res.status_code, 201)
 
-        mail.outbox.clear()
+        mock_resend_send.reset_mock()
 
         res = self.client.post('/api/contact/', payload, format='json')
         self.assertEqual(res.status_code, 429)
-        self.assertEqual(len(mail.outbox), 0)
+        mock_resend_send.assert_not_called()
 
     def test_admin_reply_link(self):
         msg = ContactMessage.objects.create(
