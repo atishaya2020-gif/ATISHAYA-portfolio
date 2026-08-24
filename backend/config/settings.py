@@ -40,6 +40,8 @@ if not ALLOWED_HOSTS:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1'] if DEBUG else []
 
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -176,6 +178,8 @@ else:
     EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
     DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', '')
 
+CONTACT_NOTIFICATION_EMAIL = os.getenv('CONTACT_NOTIFICATION_EMAIL', os.getenv('DEFAULT_FROM_EMAIL', ''))
+
 
 # Django REST Framework
 # Authentication is intentionally not configured yet.
@@ -191,6 +195,7 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_RATES': {
         'analytics_tracking': '60/minute',
+        'contact_submission': '5/hour',
     },
 }
 

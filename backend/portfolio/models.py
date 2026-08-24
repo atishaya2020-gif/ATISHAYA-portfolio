@@ -153,3 +153,24 @@ class ProfileFocus(models.Model):
 
     def __str__(self) -> str:
         return f'{self.profile.name} — {self.label}: {self.value}'
+
+
+class ContactMessage(models.Model):
+    name = models.CharField(max_length=150)
+    email = models.EmailField(max_length=254)
+    subject = models.CharField(max_length=200, blank=True, default='')
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    is_read = models.BooleanField(default=False, db_index=True)
+    is_replied = models.BooleanField(default=False, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Contact Message'
+        verbose_name_plural = 'Contact Messages'
+        indexes = [
+            models.Index(fields=['-created_at']),
+        ]
+
+    def __str__(self) -> str:
+        return f"Message from {self.name} ({self.email})"

@@ -119,3 +119,25 @@ export async function fetchProfile(): Promise<ApiProfile | null> {
     throw error;
   }
 }
+
+export interface ContactSubmissionPayload {
+  name: string;
+  email: string;
+  subject?: string;
+  message: string;
+}
+
+export interface ContactSubmissionResponse {
+  status: string;
+  message: string;
+}
+
+export async function submitContactForm(
+  payload: ContactSubmissionPayload,
+): Promise<ContactSubmissionResponse> {
+  const { data } = await apiClient.post<ContactSubmissionResponse>(
+    "/contact/",
+    payload,
+  );
+  return data;
+}

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from .models import (
+    ContactMessage,
     Education,
     Profile,
     ProfileFocus,
@@ -93,3 +94,41 @@ class ProfileSerializer(serializers.ModelSerializer):
             'education',
             'focus_items',
         ]
+
+
+class ContactMessageSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(max_length=150, trim_whitespace=True)
+    email = serializers.EmailField(max_length=254, trim_whitespace=True)
+    subject = serializers.CharField(
+        max_length=200,
+        required=False,
+        allow_blank=True,
+        default='',
+        trim_whitespace=True,
+    )
+    message = serializers.CharField(max_length=5000, trim_whitespace=True)
+
+    class Meta:
+        model = ContactMessage
+        fields = ['name', 'email', 'subject', 'message']
+
+    def validate_name(self, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise serializers.ValidationError("Name cannot be empty or whitespace only.")
+        return stripped
+
+    def validate_email(self, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise serializers.ValidationError("Email cannot be empty or whitespace only.")
+        return stripped
+
+    def validate_subject(self, value: str) -> str:
+        return value.strip() if value else ''
+
+    def validate_message(self, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise serializers.ValidationError("Message cannot be empty or whitespace only.")
+        return stripped

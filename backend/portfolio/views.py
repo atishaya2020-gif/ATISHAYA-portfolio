@@ -1,11 +1,17 @@
 from django.http import Http404
 from django.shortcuts import get_object_or_404
-from rest_framework import generics
+from rest_framework import generics, permissions, status, throttling
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Profile, Project, Technology
-from .serializers import ProfileSerializer, ProjectSerializer, TechnologySerializer
+from .serializers import (
+    ContactMessageSerializer,
+    ProfileSerializer,
+    ProjectSerializer,
+    TechnologySerializer,
+)
+from .services.contact_email import send_contact_notification_email
 
 
 class HealthView(APIView):
@@ -42,6 +48,28 @@ class ProjectDetailView(generics.RetrieveAPIView):
 class TechnologyListView(generics.ListAPIView):
     serializer_class = TechnologySerializer
     queryset = Technology.objects.all().order_by('category', 'order', 'name')
+
+
+class ContactSubmissionThrottle(throttling.AnonRateThrottle):
+    scope = 'contact_submission'
+
+
+class ContactView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [ContactSubmissionThrottle]
+
+    def post(self, request):
+        serializer = ContactMessageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        contact_message = serializer.save()
+        try:
+            send_contact_notification_email(contact_message)
+        except Exception:
+            pass
+        return Response(
+            {'status': 'ok', 'message': 'Your message has been received.'},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ProfileDetailView(generics.RetrieveAPIView):

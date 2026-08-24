@@ -1,6 +1,10 @@
+from urllib.parse import quote
+
 from django.contrib import admin
+from django.utils.html import format_html
 
 from .models import (
+    ContactMessage,
     Education,
     Profile,
     ProfileFocus,
@@ -63,3 +67,28 @@ class EducationAdmin(admin.ModelAdmin):
 @admin.register(ProfileFocus)
 class ProfileFocusAdmin(admin.ModelAdmin):
     list_display = ('profile', 'label', 'value', 'order')
+
+
+@admin.register(ContactMessage)
+class ContactMessageAdmin(admin.ModelAdmin):
+    list_display = (
+        'created_at',
+        'name',
+        'email',
+        'subject',
+        'is_read',
+        'is_replied',
+        'reply_link',
+    )
+    list_filter = ('is_read', 'is_replied', 'created_at')
+    search_fields = ('name', 'email', 'subject', 'message')
+    ordering = ('-created_at',)
+    readonly_fields = ('created_at', 'reply_link')
+
+    @admin.display(description='Reply')
+    def reply_link(self, obj):
+        if not obj.email:
+            return '-'
+        subject_text = f"Re: {obj.subject}" if obj.subject else "Re: Portfolio Contact"
+        mailto_url = f"mailto:{obj.email}?subject={quote(subject_text)}"
+        return format_html('<a href="{}" target="_blank">Reply via Email</a>', mailto_url)
