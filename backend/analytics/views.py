@@ -1,3 +1,6 @@
+import ipaddress
+
+from django.conf import settings
 from rest_framework import permissions, status, throttling
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -12,6 +15,48 @@ class AnalyticsTrackingThrottle(throttling.AnonRateThrottle):
     scope = 'analytics_tracking'
 
 
+def get_trusted_client_ip(request) -> str:
+    """Return the client IP, honoring a configured reverse-proxy trust boundary.
+
+    - When ANALYTICS_TRUST_PROXY is configured, the proxy is expected to set
+      X-Forwarded-For (a comma-separated list, leftmost = original client) and
+      optionally X-Real-IP. Those headers are only trusted because the request
+      is known to arrive from the trusted proxy.
+    - When no trusted proxy is configured, forwarded headers are ignored and
+      REMOTE_ADDR is used.
+    - Every candidate is validated with ipaddress; malformed values are ignored.
+    - Never raises. Never returns a raw IP for persistence.
+    """
+    if _is_trusted_proxy(request):
+        candidate = _first_valid_ip(request.META.get('HTTP_X_FORWARDED_FOR', ''))
+        if not candidate:
+            candidate = _first_valid_ip(request.META.get('HTTP_X_REAL_IP', ''))
+        if candidate:
+            return candidate
+    return _first_valid_ip(request.META.get('REMOTE_ADDR', ''))
+
+
+def _is_trusted_proxy(request) -> bool:
+    try:
+        val = getattr(settings, 'ANALYTICS_TRUST_PROXY', False)
+        if isinstance(val, bool):
+            return val
+        return str(val).lower() in ('true', '1', 'yes', 'on')
+    except Exception:
+        return False
+
+
+def _first_valid_ip(raw: str) -> str:
+    for part in str(raw).split(','):
+        candidate = part.strip()
+        try:
+            ipaddress.ip_address(candidate)
+        except ValueError:
+            continue
+        return candidate
+    return ''
+
+
 class PageViewCreateView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_classes = [AnalyticsTrackingThrottle]
@@ -22,7 +67,7 @@ class PageViewCreateView(APIView):
         data = serializer.validated_data
 
         user_agent = request.META.get('HTTP_USER_AGENT', '')[:500]
-        ip = self._get_client_ip(request)
+        ip = get_trusted_client_ip(request)
         referrer = request.META.get('HTTP_REFERER', '')[:1000] or data.get('referrer', '')
 
         try:
@@ -42,7 +87,3 @@ class PageViewCreateView(APIView):
         )
 
         return Response({'status': 'ok'}, status=status.HTTP_201_CREATED)
-
-    @staticmethod
-    def _get_client_ip(request) -> str:
-        return request.META.get('REMOTE_ADDR', '')

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import os
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -26,20 +27,23 @@ _lookup = None
 
 def _get_lookup():
     global _lookup
+    # We must reset lookup if it was explicitly False (from a previous failure/test)
+    # but we cannot reset if it is a valid Reader instance,
+    # because recreating the Reader is expensive.
     if _lookup is not None:
         return _lookup
     try:
         import geoip2.database  # type: ignore[import-untyped]
-        import os
         from django.conf import settings
-        db_path = getattr(settings, 'GEOIP_DATABASE_PATH', '') or os.getenv('GEOIP_DATABASE_PATH', '')
-        if db_path:
-            _lookup = geoip2.database.Reader(db_path)
-            return _lookup
+        db_path = getattr(settings, 'GEOIP_DATABASE_PATH', '') or ''
+        if not db_path or not os.path.exists(db_path):
+            _lookup = False
+            return None
+        _lookup = geoip2.database.Reader(db_path)
+        return _lookup
     except Exception:
-        pass
-    _lookup = False
-    return None
+        _lookup = False
+        return None
 
 
 def get_country_from_ip(ip_address: str) -> GeoResult:

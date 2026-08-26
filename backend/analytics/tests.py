@@ -730,3 +730,364 @@ class DashboardRangeQueryParamTests(TestCase):
         response = self.client.get(DASHBOARD_URL + '?range=invalid_xyz')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['range_key'], '30d')
+
+
+# ---------------------------------------------------------------------------
+# Batch 7 – Trusted-proxy IP extraction + geolocation hardening
+# ---------------------------------------------------------------------------
+
+class GetTrustedClientIPTests(TestCase):
+    """Unit tests for analytics.views.get_trusted_client_ip."""
+
+    def _make_request(self, meta=None):
+        from django.test import RequestFactory
+        factory = RequestFactory()
+        return factory.get('/', **(meta or {}))
+
+    def test_returns_remote_addr_when_no_proxy(self):
+        from .views import get_trusted_client_ip
+        req = self._make_request({'REMOTE_ADDR': '203.0.113.10'})
+        self.assertEqual(get_trusted_client_ip(req), '203.0.113.10')
+
+    @override_settings(ANALYTICS_TRUST_PROXY=True)
+    def test_returns_xff_first_ip_when_trusted(self):
+        from .views import get_trusted_client_ip
+        req = self._make_request({
+            'REMOTE_ADDR': '10.0.0.1',
+            'HTTP_X_FORWARDED_FOR': '198.51.100.5, 10.0.0.1',
+        })
+        self.assertEqual(get_trusted_client_ip(req), '198.51.100.5')
+
+    @override_settings(ANALYTICS_TRUST_PROXY=True)
+    def test_returns_x_real_ip_when_no_xff(self):
+        from .views import get_trusted_client_ip
+        req = self._make_request({
+            'REMOTE_ADDR': '10.0.0.1',
+            'HTTP_X_REAL_IP': '198.51.100.7',
+        })
+        self.assertEqual(get_trusted_client_ip(req), '198.51.100.7')
+
+    @override_settings(ANALYTICS_TRUST_PROXY=True)
+    def test_xff_preferred_over_x_real_ip(self):
+        from .views import get_trusted_client_ip
+        req = self._make_request({
+            'REMOTE_ADDR': '10.0.0.1',
+            'HTTP_X_FORWARDED_FOR': '198.51.100.5, 10.0.0.1',
+            'HTTP_X_REAL_IP': '198.51.100.7',
+        })
+        self.assertEqual(get_trusted_client_ip(req), '198.51.100.5')
+
+    def test_spoofed_xff_ignored_when_no_proxy(self):
+        from .views import get_trusted_client_ip
+        req = self._make_request({
+            'REMOTE_ADDR': '10.0.0.1',
+            'HTTP_X_FORWARDED_FOR': '198.51.100.5, 10.0.0.1',
+        })
+        self.assertEqual(get_trusted_client_ip(req), '10.0.0.1')
+
+    @override_settings(ANALYTICS_TRUST_PROXY=True)
+    def test_malformed_xff_skipped_gracefully(self):
+        from .views import get_trusted_client_ip
+        req = self._make_request({
+            'REMOTE_ADDR': '10.0.0.1',
+            'HTTP_X_FORWARDED_FOR': 'not-an-ip, also-bad',
+        })
+        self.assertEqual(get_trusted_client_ip(req), '10.0.0.1')
+
+    @override_settings(ANALYTICS_TRUST_PROXY=True)
+    def test_malformed_xff_before_valid_ip(self):
+        from .views import get_trusted_client_ip
+        req = self._make_request({
+            'REMOTE_ADDR': '10.0.0.1',
+            'HTTP_X_FORWARDED_FOR': 'garbage, 198.51.100.5, 10.0.0.1',
+        })
+        self.assertEqual(get_trusted_client_ip(req), '198.51.100.5')
+
+    @override_settings(ANALYTICS_TRUST_PROXY=True)
+    def test_ipv6_forwarded_address_accepted(self):
+        from .views import get_trusted_client_ip
+        req = self._make_request({
+            'REMOTE_ADDR': '::1',
+            'HTTP_X_FORWARDED_FOR': '2001:db8::1, 10.0.0.1',
+        })
+        self.assertEqual(get_trusted_client_ip(req), '2001:db8::1')
+
+    @override_settings(ANALYTICS_TRUST_PROXY=True)
+    def test_empty_forwarded_headers_fallback_to_remote_addr(self):
+        from .views import get_trusted_client_ip
+        req = self._make_request({
+            'REMOTE_ADDR': '203.0.113.10',
+            'HTTP_X_FORWARDED_FOR': '',
+            'HTTP_X_REAL_IP': '',
+        })
+        self.assertEqual(get_trusted_client_ip(req), '203.0.113.10')
+
+    @override_settings(ANALYTICS_TRUST_PROXY=True)
+    def test_private_forwarded_ip_skipped(self):
+        from .views import get_trusted_client_ip
+        req = self._make_request({
+            'REMOTE_ADDR': '10.0.0.1',
+            'HTTP_X_FORWARDED_FOR': '192.168.1.1, 10.0.0.1',
+        })
+        self.assertEqual(get_trusted_client_ip(req), '192.168.1.1')
+
+    @override_settings(ANALYTICS_TRUST_PROXY='false')
+    def test_string_false_treated_as_disabled(self):
+        from .views import get_trusted_client_ip
+        req = self._make_request({
+            'REMOTE_ADDR': '10.0.0.1',
+            'HTTP_X_FORWARDED_FOR': '198.51.100.5, 10.0.0.1',
+        })
+        self.assertEqual(get_trusted_client_ip(req), '10.0.0.1')
+
+    def test_missing_setting_defaults_to_disabled(self):
+        from .views import get_trusted_client_ip
+        from django.conf import settings
+        original = getattr(settings, 'ANALYTICS_TRUST_PROXY', None)
+        try:
+            if hasattr(settings, 'ANALYTICS_TRUST_PROXY'):
+                delattr(settings, 'ANALYTICS_TRUST_PROXY')
+            req = self._make_request({
+                'REMOTE_ADDR': '10.0.0.1',
+                'HTTP_X_FORWARDED_FOR': '198.51.100.5',
+            })
+            self.assertEqual(get_trusted_client_ip(req), '10.0.0.1')
+        finally:
+            if original is not None:
+                settings.ANALYTICS_TRUST_PROXY = original
+
+
+class TrackingEndpointTrustedProxyTests(TestCase):
+    """Integration tests: tracking endpoint with proxy-aware IP extraction."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.payload = {'session_id': str(uuid.uuid4()), 'path': '/'}
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123', ANALYTICS_TRUST_PROXY=True)
+    @patch('analytics.views.get_country_from_ip', return_value=GeoResult(country='Germany', country_code='DE'))
+    def test_xff_ip_used_for_geo_lookup(self, mock_geo):
+        self.client.post(
+            TRACK_URL, self.payload, format='json',
+            REMOTE_ADDR='10.0.0.1',
+            HTTP_X_FORWARDED_FOR='85.214.132.117, 10.0.0.1',
+        )
+        mock_geo.assert_called_once_with('85.214.132.117')
+        pv = PageView.objects.first()
+        self.assertEqual(pv.country, 'Germany')
+        self.assertEqual(pv.country_code, 'DE')
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123', ANALYTICS_TRUST_PROXY=True)
+    def test_xff_ip_used_for_ip_hash(self):
+        self.client.post(
+            TRACK_URL, self.payload, format='json',
+            REMOTE_ADDR='10.0.0.1',
+            HTTP_X_FORWARDED_FOR='85.214.132.117, 10.0.0.1',
+        )
+        pv = PageView.objects.first()
+        expected_hash = PageView.hash_ip('85.214.132.117')
+        self.assertEqual(pv.ip_hash, expected_hash)
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123')
+    @patch('analytics.views.get_country_from_ip', return_value=GeoResult(country='USA', country_code='US'))
+    def test_remote_addr_used_when_proxy_disabled(self, mock_geo):
+        self.client.post(
+            TRACK_URL, self.payload, format='json',
+            REMOTE_ADDR='203.0.113.10',
+            HTTP_X_FORWARDED_FOR='85.214.132.117, 203.0.113.10',
+        )
+        mock_geo.assert_called_once_with('203.0.113.10')
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123', ANALYTICS_TRUST_PROXY=True)
+    @patch('analytics.views.get_country_from_ip', return_value=GeoResult())
+    def test_private_forwarded_ip_results_in_blank_country(self, mock_geo):
+        self.client.post(
+            TRACK_URL, self.payload, format='json',
+            REMOTE_ADDR='10.0.0.1',
+            HTTP_X_FORWARDED_FOR='192.168.1.1, 10.0.0.1',
+        )
+        mock_geo.assert_called_once_with('192.168.1.1')
+        pv = PageView.objects.first()
+        self.assertEqual(pv.country, '')
+        self.assertEqual(pv.country_code, '')
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123', ANALYTICS_TRUST_PROXY=True)
+    def test_real_ip_header_works(self):
+        self.client.post(
+            TRACK_URL, self.payload, format='json',
+            REMOTE_ADDR='10.0.0.1',
+            HTTP_X_REAL_IP='85.214.132.117',
+        )
+        pv = PageView.objects.first()
+        expected_hash = PageView.hash_ip('85.214.132.117')
+        self.assertEqual(pv.ip_hash, expected_hash)
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123', ANALYTICS_TRUST_PROXY=True)
+    @patch('analytics.views.get_country_from_ip', return_value=GeoResult(country='Japan', country_code='JP'))
+    def test_x_real_ip_used_for_geo_lookup(self, mock_geo):
+        self.client.post(
+            TRACK_URL, self.payload, format='json',
+            REMOTE_ADDR='10.0.0.1',
+            HTTP_X_REAL_IP='103.5.140.1',
+        )
+        mock_geo.assert_called_once_with('103.5.140.1')
+        pv = PageView.objects.first()
+        self.assertEqual(pv.country, 'Japan')
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123')
+    @patch('analytics.views.get_country_from_ip', return_value=GeoResult(country='USA', country_code='US'))
+    def test_spoofed_xff_ignored_without_trust(self, mock_geo):
+        self.client.post(
+            TRACK_URL, self.payload, format='json',
+            REMOTE_ADDR='10.0.0.1',
+            HTTP_X_FORWARDED_FOR='85.214.132.117',
+        )
+        mock_geo.assert_called_once_with('10.0.0.1')
+        self.assertNotEqual(PageView.objects.first().ip_hash, PageView.hash_ip('85.214.132.117'))
+
+
+class TrackingEndpointGeoErrorResilienceTests(TestCase):
+    """Ensure geo/DB failures never crash the tracking endpoint."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.payload = {'session_id': str(uuid.uuid4()), 'path': '/'}
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123')
+    @patch('analytics.views.get_country_from_ip', side_effect=Exception('lookup failed'))
+    def test_geo_exception_still_returns_201(self, mock_geo):
+        response = self.client.post(TRACK_URL, self.payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        pv = PageView.objects.first()
+        self.assertEqual(pv.country, '')
+        self.assertEqual(pv.country_code, '')
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123')
+    @patch('analytics.views.get_country_from_ip', side_effect=RuntimeError('boom'))
+    def test_geo_runtime_error_still_returns_201(self, mock_geo):
+        response = self.client.post(TRACK_URL, self.payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123')
+    @patch('analytics.geolocation._get_lookup', return_value=None)
+    def test_missing_geoip_db_still_returns_201(self, _mock_lookup):
+        response = self.client.post(TRACK_URL, self.payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        pv = PageView.objects.first()
+        self.assertEqual(pv.country, '')
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123')
+    def test_private_ip_produces_blank_country(self):
+        self.client.post(TRACK_URL, self.payload, format='json')
+        pv = PageView.objects.first()
+        self.assertEqual(pv.country, '')
+        self.assertEqual(pv.country_code, '')
+        self.assertTrue(pv.ip_hash)
+
+
+class TrackingEndpointPrivacyTests(TestCase):
+    """Verify raw IP never persists and client cannot inject country."""
+
+    def setUp(self):
+        self.client = APIClient()
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123')
+    @patch('analytics.views.get_country_from_ip', return_value=GeoResult(country='France', country_code='FR'))
+    def test_raw_ip_never_persisted(self, mock_geo):
+        payload = {'session_id': str(uuid.uuid4()), 'path': '/'}
+        self.client.post(
+            TRACK_URL, payload, format='json',
+            REMOTE_ADDR='104.26.10.78',
+            HTTP_X_FORWARDED_FOR='85.214.132.117, 104.26.10.78',
+        )
+        pv = PageView.objects.first()
+        self.assertFalse(hasattr(pv, 'ip'))
+        self.assertFalse(hasattr(pv, 'raw_ip'))
+        self.assertFalse(hasattr(pv, 'ip_address'))
+        self.assertTrue(pv.ip_hash)
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123')
+    def test_client_cannot_inject_country(self):
+        payload = {
+            'session_id': str(uuid.uuid4()),
+            'path': '/',
+            'country': 'HackedLand',
+            'country_code': 'XX',
+        }
+        self.client.post(TRACK_URL, payload, format='json')
+        pv = PageView.objects.first()
+        self.assertEqual(pv.country, '')
+        self.assertEqual(pv.country_code, '')
+
+    def test_ip_field_not_on_model(self):
+        field_names = [f.name for f in PageView._meta.get_fields()]
+        self.assertNotIn('ip', field_names)
+        self.assertNotIn('raw_ip', field_names)
+        self.assertNotIn('ip_address', field_names)
+
+    @override_settings(ANALYTICS_HASH_SALT='test-salt-123')
+    @patch('analytics.views.get_country_from_ip', return_value=GeoResult(country='India', country_code='IN'))
+    def test_country_success_still_works(self, mock_geo):
+        payload = {'session_id': str(uuid.uuid4()), 'path': '/'}
+        self.client.post(TRACK_URL, payload, format='json')
+        pv = PageView.objects.first()
+        self.assertEqual(pv.country, 'India')
+        self.assertEqual(pv.country_code, 'IN')
+
+
+class GeolocationRobustnessTests(TestCase):
+    """Direct tests for the geolocation module edge cases."""
+
+    def test_empty_string_ip(self):
+        self.assertEqual(get_country_from_ip(''), GeoResult())
+
+    def test_invalid_ip(self):
+        self.assertEqual(get_country_from_ip('not-an-ip'), GeoResult())
+
+    def test_none_like_string(self):
+        self.assertEqual(get_country_from_ip(''), GeoResult())
+
+    @patch('analytics.geolocation._get_lookup', return_value=None)
+    def test_no_database_returns_empty(self, _mock):
+        self.assertEqual(get_country_from_ip('8.8.8.8'), GeoResult())
+
+    def test_broken_lookup_init_returns_empty(self):
+        import analytics.geolocation as geo_mod
+        original = geo_mod._lookup
+        try:
+            geo_mod._lookup = None
+            with patch.dict('sys.modules', {'geoip2.database': None}):
+                result = geo_mod.get_country_from_ip('8.8.8.8')
+            self.assertEqual(result, GeoResult())
+        finally:
+            geo_mod._lookup = original
+
+    def test_geoip2_missing_package_does_not_crash(self):
+        import importlib
+        import sys
+        geoip2_mod = sys.modules.pop('geoip2', None)
+        geoip2_db_mod = sys.modules.pop('geoip2.database', None)
+        import analytics.geolocation as geo_mod
+        original_lookup = geo_mod._lookup
+        try:
+            geo_mod._lookup = None
+            result = geo_mod.get_country_from_ip('8.8.8.8')
+            self.assertEqual(result, GeoResult())
+        finally:
+            geo_mod._lookup = original_lookup
+            if geoip2_mod:
+                sys.modules['geoip2'] = geoip2_mod
+            if geoip2_db_mod:
+                sys.modules['geoip2.database'] = geoip2_db_mod
+
+    def test_ipv6_loopback_skipped(self):
+        self.assertEqual(get_country_from_ip('::1'), GeoResult())
+
+    def test_ipv6_global_works_with_mock(self):
+        public_ipv6 = '2606:4700:4700::1111'
+        mock_resp = type('R', (), {'country': type('C', (), {'name': 'France', 'iso_code': 'FR'})()})()
+        mock_reader = type('M', (), {'country': lambda self, ip: mock_resp})()
+        with patch('analytics.geolocation._get_lookup', return_value=mock_reader):
+            result = get_country_from_ip(public_ipv6)
+            self.assertEqual(result.country, 'France')
+            self.assertEqual(result.country_code, 'FR')

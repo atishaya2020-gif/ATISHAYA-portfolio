@@ -208,8 +208,13 @@ CORS_ALLOWED_ORIGINS = _env_list('CORS_ALLOWED_ORIGINS', 'http://localhost:5173'
 
 
 # Analytics
+# ANALYTICS_TRUST_PROXY: Set to 'true' when behind a trusted reverse proxy
+# (e.g., Render, Cloudflare, nginx) that sets X-Forwarded-For / X-Real-IP.
+# When disabled (default), REMOTE_ADDR is used directly and forwarded headers
+# from untrusted clients are ignored.
 
 ANALYTICS_HASH_SALT = os.getenv('ANALYTICS_HASH_SALT', '')
+ANALYTICS_TRUST_PROXY = _env_bool('ANALYTICS_TRUST_PROXY', 'false')
 GEOIP_DATABASE_PATH = os.getenv('GEOIP_DATABASE_PATH', '')
 
 
