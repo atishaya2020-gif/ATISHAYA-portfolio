@@ -1,15 +1,29 @@
 import uuid
+from datetime import timedelta
 
 from unittest.mock import patch
 
 from django.contrib import admin
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from .models import PageView
 from .utils import get_device_type
 from .geolocation import GeoResult, get_country_from_ip
+from .services import (
+    get_analytics_range_key,
+    get_device_breakdown,
+    get_filtered_queryset,
+    get_overview_stats,
+    get_range_bounds,
+    get_range_overview,
+    get_time_series,
+    get_top_countries,
+    get_top_pages,
+    get_top_referrers,
+)
 
 from portfolio.models import Profile
 
@@ -331,7 +345,7 @@ class DashboardAccessTests(TestCase):
         self.client.login(username='dashadmin', password='pass123')
         response = self.client.get(DASHBOARD_URL)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Analytics Overview')
+        self.assertContains(response, 'Analytics Dashboard')
 
 
 class DashboardMetricsTests(TestCase):
@@ -350,13 +364,13 @@ class DashboardMetricsTests(TestCase):
         self.assertIn('2', self.content)
 
     def test_views_today(self):
-        self.assertContains(self.response, 'Today')
+        self.assertContains(self.response, 'Views')
 
     def test_views_last_7_days(self):
-        self.assertContains(self.response, 'Last 7 Days')
+        self.assertContains(self.response, '7D')
 
     def test_views_last_30_days(self):
-        self.assertContains(self.response, 'Last 30 Days')
+        self.assertContains(self.response, '30D')
 
 
 class DashboardAggregationTests(TestCase):
@@ -395,8 +409,9 @@ class DashboardDailyViewsTests(TestCase):
         User.objects.create_user('dashadmin', 'admin@test.com', 'pass123', is_staff=True)
         self.client.login(username='dashadmin', password='pass123')
         response = self.client.get(DASHBOARD_URL)
-        self.assertContains(response, 'Daily Views')
-        self.assertContains(response, 'Last 30 Days')
+        # Check for range buttons instead of "Daily Views" text
+        self.assertContains(response, '30D')
+        self.assertContains(response, '7D')
 
 
 class DashboardRecentVisitsTests(TestCase):
@@ -549,3 +564,169 @@ class DashboardCountryAggregationTests(TestCase):
         self.client.login(username='dashadmin', password='pass123')
         response = self.client.get(DASHBOARD_URL)
         self.assertContains(response, 'No country data yet.')
+
+
+# ---------------------------------------------------------------------------
+# Batch 6 – Analytics Range Functionality Tests
+# ---------------------------------------------------------------------------
+
+class AnalyticsRangeKeyTests(TestCase):
+    def test_default_range_is_30d(self):
+        self.assertEqual(get_analytics_range_key(None), '30d')
+        self.assertEqual(get_analytics_range_key(''), '30d')
+
+    def test_range_key_1d(self):
+        self.assertEqual(get_analytics_range_key('1d'), '1d')
+
+    def test_range_key_7d(self):
+        self.assertEqual(get_analytics_range_key('7d'), '7d')
+
+    def test_range_key_30d(self):
+        self.assertEqual(get_analytics_range_key('30d'), '30d')
+
+    def test_range_key_3m(self):
+        self.assertEqual(get_analytics_range_key('3m'), '3m')
+
+    def test_range_key_6m(self):
+        self.assertEqual(get_analytics_range_key('6m'), '6m')
+
+    def test_range_key_1y(self):
+        self.assertEqual(get_analytics_range_key('1y'), '1y')
+
+    def test_range_key_all_time(self):
+        self.assertEqual(get_analytics_range_key('all'), 'all')
+        start, end = get_range_bounds('all')
+        self.assertIsNone(start)
+        self.assertIsNotNone(end)
+
+    def test_invalid_range_falls_back_to_30d(self):
+        self.assertEqual(get_analytics_range_key('invalid_range'), '30d')
+        self.assertEqual(get_analytics_range_key('999d'), '30d')
+
+
+class AnalyticsRangeFilteringTests(TestCase):
+    def test_range_filtering_excludes_out_of_range_pageviews(self):
+        now = timezone.now()
+        s1 = uuid.uuid4()
+        pv_recent = PageView.objects.create(session_id=s1, path='/recent')
+        pv_old = PageView.objects.create(session_id=s1, path='/old')
+        PageView.objects.filter(pk=pv_old.pk).update(created_at=now - timedelta(days=10))
+
+        qs_7d = get_filtered_queryset('7d')
+        self.assertEqual(qs_7d.count(), 1)
+        self.assertEqual(qs_7d.first().path, '/recent')
+
+    def test_unique_visitors_use_distinct_session_id(self):
+        s1 = uuid.uuid4()
+        s2 = uuid.uuid4()
+        PageView.objects.create(session_id=s1, path='/page1')
+        PageView.objects.create(session_id=s1, path='/page2')
+        PageView.objects.create(session_id=s2, path='/page1')
+
+        overview = get_range_overview('7d')
+        self.assertEqual(overview['total_views'], 3)
+        self.assertEqual(overview['unique_visitors'], 2)
+
+    def test_time_series_views_aggregation(self):
+        s1 = uuid.uuid4()
+        s2 = uuid.uuid4()
+        PageView.objects.create(session_id=s1, path='/')
+        PageView.objects.create(session_id=s2, path='/')
+
+        series = get_time_series('7d')
+        today_str = timezone.localdate().strftime('%Y-%m-%d')
+        today_bucket = next((b for b in series if b['date'] == today_str), None)
+        self.assertIsNotNone(today_bucket)
+        self.assertEqual(today_bucket['views'], 2)
+
+    def test_time_series_unique_visitor_aggregation(self):
+        s1 = uuid.uuid4()
+        PageView.objects.create(session_id=s1, path='/p1')
+        PageView.objects.create(session_id=s1, path='/p2')
+
+        series = get_time_series('7d')
+        today_str = timezone.localdate().strftime('%Y-%m-%d')
+        today_bucket = next((b for b in series if b['date'] == today_str), None)
+        self.assertIsNotNone(today_bucket)
+        self.assertEqual(today_bucket['views'], 2)
+        self.assertEqual(today_bucket['unique_visitors'], 1)
+
+    def test_zero_value_time_series_buckets(self):
+        series = get_time_series('7d')
+        self.assertEqual(len(series), 7)
+        for bucket in series:
+            self.assertIn('views', bucket)
+            self.assertIn('unique_visitors', bucket)
+            self.assertEqual(bucket['views'], 0)
+            self.assertEqual(bucket['unique_visitors'], 0)
+
+    def test_top_pages_respect_selected_range(self):
+        now = timezone.now()
+        s1 = uuid.uuid4()
+        pv_recent = PageView.objects.create(session_id=s1, path='/recent-page')
+        pv_old = PageView.objects.create(session_id=s1, path='/old-page')
+        PageView.objects.filter(pk=pv_old.pk).update(created_at=now - timedelta(days=40))
+
+        top_30d = get_top_pages('30d')
+        paths_30d = [p['path'] for p in top_30d]
+        self.assertIn('/recent-page', paths_30d)
+        self.assertNotIn('/old-page', paths_30d)
+
+        top_all = get_top_pages('all')
+        paths_all = [p['path'] for p in top_all]
+        self.assertIn('/recent-page', paths_all)
+        self.assertIn('/old-page', paths_all)
+
+    def test_top_referrers_respect_selected_range(self):
+        now = timezone.now()
+        s1 = uuid.uuid4()
+        pv_recent = PageView.objects.create(session_id=s1, path='/', referrer='https://recent-ref.com')
+        pv_old = PageView.objects.create(session_id=s1, path='/', referrer='https://old-ref.com')
+        PageView.objects.filter(pk=pv_old.pk).update(created_at=now - timedelta(days=40))
+
+        ref_30d = [r['referrer'] for r in get_top_referrers('30d')]
+        self.assertIn('https://recent-ref.com', ref_30d)
+        self.assertNotIn('https://old-ref.com', ref_30d)
+
+    def test_countries_respect_selected_range(self):
+        now = timezone.now()
+        s1 = uuid.uuid4()
+        pv_recent = PageView.objects.create(session_id=s1, path='/', country='France', country_code='FR')
+        pv_old = PageView.objects.create(session_id=s1, path='/', country='Japan', country_code='JP')
+        PageView.objects.filter(pk=pv_old.pk).update(created_at=now - timedelta(days=40))
+
+        c_30d = [c['country_code'] for c in get_top_countries('30d')]
+        self.assertIn('FR', c_30d)
+        self.assertNotIn('JP', c_30d)
+
+    def test_devices_respect_selected_range(self):
+        now = timezone.now()
+        s1 = uuid.uuid4()
+        pv_recent = PageView.objects.create(session_id=s1, path='/', device_type='mobile')
+        pv_old = PageView.objects.create(session_id=s1, path='/', device_type='tablet')
+        PageView.objects.filter(pk=pv_old.pk).update(created_at=now - timedelta(days=40))
+
+        dev_30d = {d['key']: d['views'] for d in get_device_breakdown('30d')}
+        self.assertEqual(dev_30d['mobile'], 1)
+        self.assertEqual(dev_30d['tablet'], 0)
+
+        dev_all = {d['key']: d['views'] for d in get_device_breakdown('all')}
+        self.assertEqual(dev_all['mobile'], 1)
+        self.assertEqual(dev_all['tablet'], 1)
+
+
+class DashboardRangeQueryParamTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        User.objects.create_user('dashadmin', 'admin@test.com', 'pass123', is_staff=True)
+        self.client.login(username='dashadmin', password='pass123')
+
+    def test_dashboard_accepts_range_7d(self):
+        response = self.client.get(DASHBOARD_URL + '?range=7d')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['range_key'], '7d')
+
+    def test_dashboard_handles_invalid_range_safely(self):
+        response = self.client.get(DASHBOARD_URL + '?range=invalid_xyz')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['range_key'], '30d')

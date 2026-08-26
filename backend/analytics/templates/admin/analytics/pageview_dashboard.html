@@ -5,21 +5,296 @@
 {% block extrastyle %}
   {{ block.super }}
   <style>
-    .analytics-dashboard { max-width: 960px; }
-    .analytics-dashboard h1 { margin-bottom: 8px; }
-    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 16px 0 24px; }
-    .metric-card { background: #fff; border: 1px solid var(--hairline-color); border-radius: 4px; padding: 14px 16px; }
-    .metric-card .value { font-size: 28px; font-weight: 700; line-height: 1.2; }
-    .metric-card .label { color: var(--body-quiet-color); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
-    .dashboard-section { background: #fff; border: 1px solid var(--hairline-color); border-radius: 4px; margin-bottom: 20px; }
-    .dashboard-section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; padding: 10px 14px; border-bottom: 1px solid var(--hairline-color); margin: 0; }
-    .dashboard-section table { width: 100%; border-collapse: collapse; }
-    .dashboard-section th, .dashboard-section td { padding: 8px 14px; text-align: left; border-bottom: 1px solid var(--hairline-color); font-size: 13px; }
-    .dashboard-section tr:last-child td { border-bottom: none; }
-    .dashboard-section th.num, .dashboard-section td.num { text-align: right; width: 90px; }
-    .empty-state { color: var(--body-quiet-color); font-style: italic; padding: 12px 14px; }
-    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+    :root {
+      --dash-bg: var(--body-bg, #ffffff);
+      --dash-fg: var(--body-fg, #1e293b);
+      --dash-muted: var(--body-quiet-color, #64748b);
+      --dash-border: var(--hairline-color, #e2e8f0);
+      --dash-card-bg: var(--body-bg, #ffffff);
+      --dash-primary: var(--primary-color, #2563eb);
+      --dash-accent: #0d9488;
+      --dash-hover-bg: rgba(0, 0, 0, 0.02);
+    }
+
+    .analytics-dashboard {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 8px 0 40px 0;
+      color: var(--dash-fg);
+    }
+
+    .dashboard-header-bar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin: 8px 0 20px 0;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--dash-border);
+    }
+
+    .dashboard-header-bar .header-title h1 {
+      margin: 0 0 4px 0;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--dash-fg);
+    }
+
+    .dashboard-header-bar .header-title p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--dash-muted);
+    }
+
+    .range-segmented-control {
+      display: inline-flex;
+      align-items: stretch;
+      background: rgba(0, 0, 0, 0.04);
+      padding: 3px;
+      border-radius: 8px;
+      gap: 0;
+      border: 1px solid var(--dash-border);
+      overflow: hidden;
+    }
+
+    .range-btn {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--dash-muted);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+      line-height: 1.4;
+      text-align: center;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .range-btn:hover {
+      color: var(--dash-primary);
+      text-decoration: none;
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    .range-btn.active {
+      background: var(--dash-card-bg);
+      color: var(--dash-primary) !important;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+      font-weight: 700;
+    }
+
+    .range-btn.active:hover {
+      background: var(--dash-card-bg);
+    }
+
+    .range-btn:focus-visible {
+      outline: 2px solid var(--dash-primary);
+      outline-offset: 1px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .metric-card {
+      background: var(--dash-card-bg);
+      border: 1px solid var(--dash-border);
+      border-radius: 10px;
+      padding: 18px 20px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 90px;
+      box-sizing: border-box;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+
+    .metric-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(37, 99, 235, 0.08);
+      border-color: rgba(37, 99, 235, 0.22);
+    }
+
+    .metric-card .card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .metric-card .label {
+      color: var(--dash-muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .metric-card .card-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(37, 99, 235, 0.08);
+      color: var(--dash-primary);
+      flex-shrink: 0;
+    }
+
+    .metric-card .value {
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      letter-spacing: -0.02em;
+    }
+
+    .dashboard-section {
+      background: var(--dash-card-bg);
+      border: 1px solid var(--dash-border);
+      border-radius: 10px;
+      margin-bottom: 20px;
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    }
+
+    .dashboard-section-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--dash-border);
+      background: rgba(0, 0, 0, 0.015);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .dashboard-section-header h2 {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 0;
+      color: var(--dash-fg);
+    }
+
+    .chart-container {
+      position: relative;
+      height: 260px;
+      width: 100%;
+      padding: 16px 20px;
+      box-sizing: border-box;
+    }
+
+    .dashboard-section table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .dashboard-section th {
+      padding: 10px 20px;
+      text-align: left;
+      border-bottom: 1px solid var(--dash-border);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--dash-muted);
+      background: rgba(0, 0, 0, 0.01);
+    }
+
+    .dashboard-section td {
+      padding: 12px 20px;
+      text-align: left;
+      border-bottom: 1px solid var(--dash-border);
+      font-size: 13px;
+      color: var(--dash-fg);
+    }
+
+    .dashboard-section tr:last-child td {
+      border-bottom: none;
+    }
+
+    .dashboard-section tbody tr:hover {
+      background: var(--dash-hover-bg);
+    }
+
+    .dashboard-section th.num, .dashboard-section td.num {
+      text-align: right;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .cell-truncate {
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .empty-state {
+      color: var(--dash-muted);
+      font-size: 13px;
+      padding: 28px 20px;
+      text-align: center;
+      margin: 0;
+      font-style: italic;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .section-group-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--dash-muted);
+      margin: 24px 0 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section-group-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--dash-border);
+    }
+
+    @media (max-width: 800px) {
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+      .dashboard-header-bar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .range-segmented-control {
+        width: 100%;
+        overflow-x: auto;
+      }
+      .range-btn {
+        flex: 1;
+      }
+      .cell-truncate {
+        max-width: 180px;
+      }
+    }
   </style>
 {% endblock %}
 
@@ -34,27 +309,106 @@
 {% block content %}
 <div class="analytics-dashboard">
 
-  <h1>Analytics Overview</h1>
+  <div class="dashboard-header-bar">
+    <div class="header-title">
+      <h1>Analytics Dashboard</h1>
+      <p>Monitor traffic, visitors, and audience activity.</p>
+    </div>
 
-  <div class="metric-grid">
-    <div class="metric-card"><div class="value">{{ stats.total_views }}</div><div class="label">Total Views</div></div>
-    <div class="metric-card"><div class="value">{{ stats.unique_visitors }}</div><div class="label">Unique Visitors</div></div>
-    <div class="metric-card"><div class="value">{{ stats.views_today }}</div><div class="label">Today</div></div>
-    <div class="metric-card"><div class="value">{{ stats.views_last_7_days }}</div><div class="label">Last 7 Days</div></div>
-    <div class="metric-card"><div class="value">{{ stats.views_last_30_days }}</div><div class="label">Last 30 Days</div></div>
+    <nav aria-label="Time range selector" class="range-segmented-control">
+      <a href="?range=1d" class="range-btn {% if range_key == '1d' %}active{% endif %}">1D</a>
+      <a href="?range=7d" class="range-btn {% if range_key == '7d' %}active{% endif %}">7D</a>
+      <a href="?range=30d" class="range-btn {% if range_key == '30d' %}active{% endif %}">30D</a>
+      <a href="?range=3m" class="range-btn {% if range_key == '3m' %}active{% endif %}">3M</a>
+      <a href="?range=6m" class="range-btn {% if range_key == '6m' %}active{% endif %}">6M</a>
+      <a href="?range=1y" class="range-btn {% if range_key == '1y' %}active{% endif %}">1Y</a>
+      <a href="?range=all" class="range-btn {% if range_key == 'all' %}active{% endif %}">ALL</a>
+    </nav>
   </div>
 
-  <h1>Traffic</h1>
+  <div class="metric-grid">
+    <div class="metric-card">
+      <div class="card-top">
+        <span class="label">Views</span>
+        <span class="card-icon" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </span>
+      </div>
+      <div class="value">{{ stats.total_views }}</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="card-top">
+        <span class="label">Unique Visitors</span>
+        <span class="card-icon" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </span>
+      </div>
+      <div class="value">{{ stats.unique_visitors }}</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="card-top">
+        <span class="label">Avg Views / Day</span>
+        <span class="card-icon" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </span>
+      </div>
+      <div class="value">{{ stats.avg_views_per_day }}</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="card-top">
+        <span class="label">Top Page</span>
+        <span class="card-icon" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </span>
+      </div>
+      <div class="value" title="{{ stats.top_page }}">{{ stats.top_page }}</div>
+    </div>
+  </div>
+
+  <div class="dashboard-section">
+    <div class="dashboard-section-header">
+      <h2>Traffic Overview</h2>
+    </div>
+    <div class="chart-container">
+      <canvas id="trafficChart"></canvas>
+      <div id="chartFallback" style="display: none;">
+        <table>
+          <thead>
+            <tr><th>Period</th><th class="num">Views</th><th class="num">Visitors</th></tr>
+          </thead>
+          <tbody>
+            {% for point in time_series %}
+              <tr><td>{{ point.label }}</td><td class="num">{{ point.views }}</td><td class="num">{{ point.unique_visitors }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-group-title">Traffic</div>
 
   <div class="two-col">
     <div class="dashboard-section">
-      <h2>Top Pages</h2>
+      <div class="dashboard-section-header">
+        <h2>Top Pages</h2>
+      </div>
       {% if top_pages %}
         <table>
-          <tr><th>Path</th><th class="num">Views</th></tr>
-          {% for page in top_pages %}
-            <tr><td>{{ page.path }}</td><td class="num">{{ page.views }}</td></tr>
-          {% endfor %}
+          <thead>
+            <tr><th>Path</th><th class="num">Views</th></tr>
+          </thead>
+          <tbody>
+            {% for page in top_pages %}
+              <tr>
+                <td class="cell-truncate" title="{{ page.path }}">{{ page.path }}</td>
+                <td class="num">{{ page.views }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
         </table>
       {% else %}
         <p class="empty-state">No page views yet.</p>
@@ -62,31 +416,49 @@
     </div>
 
     <div class="dashboard-section">
-      <h2>Top Referrers</h2>
+      <div class="dashboard-section-header">
+        <h2>Top Referrers</h2>
+      </div>
       {% if top_referrers %}
         <table>
-          <tr><th>Referrer</th><th class="num">Views</th></tr>
-          {% for ref in top_referrers %}
-            <tr><td>{{ ref.referrer }}</td><td class="num">{{ ref.views }}</td></tr>
-          {% endfor %}
+          <thead>
+            <tr><th>Referrer</th><th class="num">Views</th></tr>
+          </thead>
+          <tbody>
+            {% for ref in top_referrers %}
+              <tr>
+                <td class="cell-truncate" title="{{ ref.referrer }}">{{ ref.referrer }}</td>
+                <td class="num">{{ ref.views }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
         </table>
       {% else %}
-        <p class="empty-state">No referrer data yet.</p>
+        <p class="empty-state">No referrer data in selected range.</p>
       {% endif %}
     </div>
   </div>
 
-  <h1>Audience</h1>
+  <div class="section-group-title">Audience</div>
 
   <div class="two-col">
     <div class="dashboard-section">
-      <h2>Countries</h2>
+      <div class="dashboard-section-header">
+        <h2>Countries</h2>
+      </div>
       {% if top_countries %}
         <table>
-          <tr><th>Country</th><th class="num">Views</th></tr>
-          {% for c in top_countries %}
-            <tr><td>{{ c.country|default:c.country_code }} ({{ c.country_code }})</td><td class="num">{{ c.views }}</td></tr>
-          {% endfor %}
+          <thead>
+            <tr><th>Country</th><th class="num">Views</th></tr>
+          </thead>
+          <tbody>
+            {% for c in top_countries %}
+              <tr>
+                <td>{{ c.country|default:c.country_code }} ({{ c.country_code }})</td>
+                <td class="num">{{ c.views }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
         </table>
       {% else %}
         <p class="empty-state">No country data yet.</p>
@@ -94,49 +466,153 @@
     </div>
 
     <div class="dashboard-section">
-      <h2>Devices</h2>
+      <div class="dashboard-section-header">
+        <h2>Devices</h2>
+      </div>
       <table>
-        <tr><th>Device</th><th class="num">Views</th></tr>
-        {% for d in devices %}
-          <tr><td>{{ d.device }}</td><td class="num">{{ d.views }}</td></tr>
-        {% endfor %}
+        <thead>
+          <tr><th>Device</th><th class="num">Views</th></tr>
+        </thead>
+        <tbody>
+          {% for d in devices %}
+            <tr>
+              <td>{{ d.device }}</td>
+              <td class="num">{{ d.views }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
       </table>
     </div>
   </div>
 
-  <h1>Activity</h1>
+  <div class="section-group-title">Activity</div>
 
-  <div class="two-col">
-    <div class="dashboard-section">
-      <h2>Daily Views — Last 30 Days</h2>
-      <table>
-        <tr><th>Date</th><th class="num">Views</th></tr>
-        {% for day in daily_views %}
-          <tr><td>{{ day.date|date:"Y-m-d" }}</td><td class="num">{{ day.views }}</td></tr>
-        {% endfor %}
-      </table>
-    </div>
-
-    <div class="dashboard-section">
+  <div class="dashboard-section">
+    <div class="dashboard-section-header">
       <h2>Recent Visits</h2>
-      {% if recent_visits %}
-        <table>
+    </div>
+    {% if recent_visits %}
+      <table>
+        <thead>
           <tr><th>Time</th><th>Path</th><th>Country</th><th>Device</th><th>Referrer</th></tr>
+        </thead>
+        <tbody>
           {% for visit in recent_visits %}
             <tr>
               <td>{{ visit.time|date:"Y-m-d H:i" }}</td>
-              <td>{{ visit.path }}</td>
+              <td class="cell-truncate" title="{{ visit.path }}">{{ visit.path }}</td>
               <td>{{ visit.country|default:"—" }}</td>
               <td>{{ visit.device }}</td>
-              <td>{{ visit.referrer|default:"—" }}</td>
+              <td class="cell-truncate" title="{{ visit.referrer }}">{{ visit.referrer|default:"—" }}</td>
             </tr>
           {% endfor %}
-        </table>
-      {% else %}
-        <p class="empty-state">No page views yet.</p>
-      {% endif %}
-    </div>
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No page views in selected range.</p>
+    {% endif %}
   </div>
 
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{{ time_series|json_script:"time-series-data" }}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const dataElement = document.getElementById("time-series-data");
+    if (!dataElement) return;
+
+    const timeSeries = JSON.parse(dataElement.textContent || "[]");
+    const labels = timeSeries.map(item => item.label);
+    const viewsData = timeSeries.map(item => item.views);
+    const visitorsData = timeSeries.map(item => item.unique_visitors);
+
+    const canvas = document.getElementById("trafficChart");
+    const fallback = document.getElementById("chartFallback");
+    const dataMax = Math.max(0, ...viewsData, ...visitorsData);
+    const isLowData = dataMax < 4;
+
+    if (window.Chart && canvas && labels.length > 0) {
+      const ctx = canvas.getContext("2d");
+      new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: "Views",
+              data: viewsData,
+              borderColor: "#2563eb",
+              backgroundColor: isLowData ? "rgba(37, 99, 235, 0.04)" : "rgba(37, 99, 235, 0.08)",
+              borderWidth: 2,
+              fill: true,
+              tension: 0.25,
+              pointRadius: labels.length > 35 ? 0 : (isLowData ? 2 : 3),
+              pointHoverRadius: 5,
+            },
+            {
+              label: "Unique Visitors",
+              data: visitorsData,
+              borderColor: "#0d9488",
+              backgroundColor: isLowData ? "rgba(13, 148, 136, 0.04)" : "rgba(13, 148, 136, 0.08)",
+              borderWidth: 2,
+              fill: true,
+              tension: 0.25,
+              pointRadius: labels.length > 35 ? 0 : (isLowData ? 2 : 3),
+              pointHoverRadius: 5,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: {
+              display: true,
+              position: "top",
+              align: "end",
+              labels: {
+                boxWidth: 12,
+                usePointStyle: true,
+                font: { size: 12, weight: '600' }
+              }
+            },
+            tooltip: {
+              enabled: true,
+              padding: 10,
+              cornerRadius: 6,
+              titleFont: { size: 12, weight: '700' },
+              bodyFont: { size: 12 }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: {
+                maxRotation: 45,
+                minRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 12,
+                font: { size: 11 }
+              }
+            },
+            y: {
+              beginAtZero: true,
+              suggestedMax: isLowData ? 4 : undefined,
+              grid: { color: "rgba(0, 0, 0, 0.05)" },
+              ticks: {
+                precision: 0,
+                font: { size: 11 },
+                stepSize: isLowData ? 1 : undefined
+              }
+            }
+          }
+        }
+      });
+    } else if (fallback) {
+      fallback.style.display = "block";
+    }
+  });
+</script>
 {% endblock %}
