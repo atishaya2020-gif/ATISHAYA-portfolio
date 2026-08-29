@@ -2,7 +2,8 @@ from django.contrib import admin
 from django.urls import path
 from django.utils.html import format_html
 
-from .models import PageView
+from .anomaly import get_recent_anomalies
+from .models import AnalyticsAnomaly, PageView
 from .services import (
     VALID_RANGES,
     get_analytics_range_key,
@@ -46,6 +47,11 @@ class PageViewAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.dashboard_view),
                 name='analytics_pageview_dashboard',
             ),
+            path(
+                'anomalies/',
+                self.admin_site.admin_view(self.anomalies_view),
+                name='analytics_pageview_anomalies',
+            ),
         ]
         return custom_urls + urls
 
@@ -79,9 +85,55 @@ class PageViewAdmin(admin.ModelAdmin):
             context,
         )
 
+    def anomalies_view(self, request):
+        from django.shortcuts import render
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': 'Analytics Anomalies',
+            'anomalies': get_recent_anomalies(limit=50),
+        }
+        return render(
+            request,
+            'admin/analytics/anomaly_dashboard.html',
+            context,
+        )
+
     @admin.display(description='Dashboard')
     def dashboard_link(self, obj):
         return format_html(
             '<a href="{}">View analytics</a>',
             '/admin/analytics/pageview/dashboard/',
         )
+
+
+@admin.register(AnalyticsAnomaly)
+class AnalyticsAnomalyAdmin(admin.ModelAdmin):
+    list_display = (
+        'window_end',
+        'severity',
+        'kind',
+        'dimension',
+        'current_value',
+        'baseline_value',
+        'deviation_percent',
+        'acknowledged',
+    )
+    list_filter = ('kind', 'acknowledged', 'window_end')
+    search_fields = ('dimension', 'metric', 'fingerprint')
+    readonly_fields = (
+        'kind',
+        'severity',
+        'metric',
+        'dimension',
+        'current_value',
+        'baseline_value',
+        'deviation_percent',
+        'z_score',
+        'window_start',
+        'window_end',
+        'fingerprint',
+        'details',
+        'created_at',
+    )
+    ordering = ('-window_end', '-severity')
