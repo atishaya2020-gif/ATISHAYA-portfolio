@@ -514,6 +514,72 @@
 
     <div class="dashboard-section">
       <div class="dashboard-section-header">
+        <h2>// Anomaly Monitor</h2>
+        <span class="section-kicker">Detection engine ready</span>
+      </div>
+
+      <div class="anomaly-status" style="padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--dash-border);">
+        <div style="display: grid; grid-template-columns: repeat(3, auto); gap: 24px; align-items: center;">
+          <div class="insight-card" style="padding: 12px 18px; background: var(--dash-surface);">
+            <span class="label">Recent Anomalies</span>
+            <div class="insight-value">{{ anomaly_count }}</div>
+          </div>
+          <div class="insight-card" style="padding: 12px 18px; background: var(--dash-surface);">
+            <span class="label">Peak Severity</span>
+            <div class="insight-value">
+              {% if anomaly_max_severity > 80 %}
+                <span style="color: #e11d2e;">{{ anomaly_max_severity }}</span>
+              {% elif anomaly_max_severity > 40 %}
+                <span style="color: #facc15;">{{ anomaly_max_severity }}</span>
+              {% else %}
+                <span style="color: var(--dash-muted);">{{ anomaly_max_severity }}</span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="insight-card" style="padding: 12px 18px; background: var(--dash-surface);">
+            <span class="label">Latest Event</span>
+            <div class="insight-value">{% if anomaly_latest_time %}{{ anomaly_latest_time|date:"Y-m-d H:i" }}{% else %}None{% endif %}</div>
+          </div>
+        </div>
+        <div>
+          <a href="{% url 'admin:analytics_pageview_anomalies' %}" class="range-btn active" style="display: inline-block; padding: 10px 16px; text-decoration: none; color: var(--dash-accent); font-family: var(--dash-mono); font-size: 11px; font-weight: 800; border: 1px solid var(--dash-accent); background: transparent; transition: all 0.2s; letter-spacing: 0.1em;">VIEW ANOMALY HISTORY &rarr;</a>
+        </div>
+      </div>
+
+      {% if recent_anomalies %}
+        <div class="data-list" style="padding: 14px; display: grid; gap: 8px;">
+          {% for anomaly in recent_anomalies %}
+            <div class="data-row" style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px; border: 1px solid transparent; background: rgba(255,255,255,0.018); transition: border-color 0.2s ease, background 0.2s ease; border-left: 4px solid {% if anomaly.severity > 80 %}#e11d2e{% elif anomaly.severity > 40 %}#facc15{% else %}transparent{% endif %};">
+              <div class="data-main" style="min-width: 0;">
+                <div class="data-title" style="display: flex; gap: 12px; align-items: center; overflow: hidden; color: var(--dash-text); font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap;">
+                  <span style="min-width: 28px; font-family: var(--dash-mono); font-weight: 900; font-size: 11px; color: {% if anomaly.severity > 80 %}#e11d2e{% elif anomaly.severity > 40 %}#facc15{% else %}var(--dash-muted){% endif %};">{{ anomaly.severity }}</span>
+                  <span style="text-transform: uppercase; letter-spacing: 0.08em;">{{ anomaly.get_kind_display }}</span>
+                </div>
+                <div style="margin-top: 6px; font-size: 12px; color: var(--dash-muted); font-family: var(--dash-mono);">
+                  {% if anomaly.dimension %}{{ anomaly.dimension }}{% else %}ALL TRAFFIC{% endif %}
+                </div>
+              </div>
+              <div class="data-stats" style="min-width: 210px; text-align: right; font-family: var(--dash-mono); font-size: 11px; color: var(--dash-muted);">
+                <span style="color: var(--dash-text);">{{ anomaly.current_value }}</span> vs <span>{{ anomaly.baseline_value }}</span>
+                <span style="color: {% if anomaly.deviation_percent > 0 %}#e11d2e{% else %}#8a8a8a{% endif %}; margin-left: 6px;">({{ anomaly.deviation_percent }}%)</span>
+                <div class="data-percent" style="margin-top: 4px; font-size: 10px;">{{ anomaly.window_end|date:"Y-m-d H:i" }}</div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div style="padding: 48px 20px; text-align: center;">
+          <div style="font-family: var(--dash-mono); font-size: 14px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: var(--dash-muted); margin-bottom: 16px;">No Recent Anomalies</div>
+          <p style="font-family: var(--dash-mono); font-size: 11px; color: rgba(138, 138, 138, 0.7); letter-spacing: 0.08em; max-width: 400px; margin: 0 auto;">
+            Detection engine ready.<br>
+            Insufficient or normal traffic patterns currently detected.
+          </p>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="dashboard-section">
+      <div class="dashboard-section-header">
         <h2>// Quick Insights</h2>
         <span class="section-kicker">Current range</span>
       </div>

@@ -359,7 +359,7 @@ class DashboardAccessTests(TestCase):
         self.client.login(username='dashadmin', password='pass123')
         response = self.client.get(DASHBOARD_URL)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Analytics Dashboard')
+        self.assertContains(response, 'ATISHAYA // ANALYTICS')
 
 
 class DashboardMetricsTests(TestCase):
@@ -1240,3 +1240,39 @@ class Phase4BAnalyticsMetricsTests(TestCase):
         PageView.objects.create(session_id=uuid.uuid4(), path='/', created_at=now)
         self.assertNotEqual(get_peak_day('all'), '—')
         self.assertNotEqual(get_peak_hour('all'), '—')
+
+
+DASHBOARD_URL = '/admin/analytics/pageview/dashboard/'
+
+
+class DashboardAnomalySectionTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        User.objects.create_user('anomalyadmin', 'anomaly@test.com', 'pass123', is_staff=True)
+        self.client.login(username='anomalyadmin', password='pass123')
+
+    def test_anomaly_section_renders_on_dashboard(self):
+        response = self.client.get(DASHBOARD_URL)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Anomaly Monitor')
+        self.assertContains(response, 'Detection engine ready')
+
+    def test_empty_anomaly_state(self):
+        response = self.client.get(DASHBOARD_URL)
+        self.assertContains(response, 'No Recent Anomalies')
+        self.assertNotContains(response, 'fingerprint')
+        self.assertNotContains(response, 'ip_hash')
+
+    def test_anomaly_link_present(self):
+        response = self.client.get(DASHBOARD_URL)
+        self.assertContains(response, 'VIEW ANOMALY HISTORY')
+        self.assertContains(response, '/admin/analytics/pageview/anomalies/')
+
+    def test_recent_anomalies_not_displayed_when_none(self):
+        response = self.client.get(DASHBOARD_URL)
+        self.assertNotContains(response, 'current_value')
+        self.assertNotContains(response, 'baseline_value')
+
+    def test_anomaly_count_zero_initially(self):
+        response = self.client.get(DASHBOARD_URL)
+        self.assertContains(response, '<div class="insight-value">0</div>')

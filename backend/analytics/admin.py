@@ -60,10 +60,11 @@ class PageViewAdmin(admin.ModelAdmin):
 
         range_param = request.GET.get('range', '30d')
         range_key = get_analytics_range_key(range_param)
+        recent_anomalies = get_recent_anomalies(limit=5)
 
         context = {
             **self.admin_site.each_context(request),
-            'title': 'Analytics Dashboard',
+            'title': 'ATISHAYA // ANALYTICS',
             'range_key': range_key,
             'valid_ranges': VALID_RANGES,
             'stats': get_overview_stats(range_key),
@@ -78,6 +79,10 @@ class PageViewAdmin(admin.ModelAdmin):
             'insights': get_insights(range_key),
             'daily_views': get_daily_views(),
             'recent_visits': get_recent_visits(range_key),
+            'anomaly_count': len(recent_anomalies),
+            'anomaly_max_severity': max((a.severity for a in recent_anomalies), default=0),
+            'anomaly_latest_time': recent_anomalies[0].window_end if recent_anomalies else None,
+            'recent_anomalies': recent_anomalies,
         }
         return render(
             request,
