@@ -4,6 +4,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib import admin
+from django.db import DatabaseError
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
@@ -1275,4 +1276,11 @@ class DashboardAnomalySectionTests(TestCase):
 
     def test_anomaly_count_zero_initially(self):
         response = self.client.get(DASHBOARD_URL)
+        self.assertContains(response, '<div class="insight-value">0</div>')
+
+    def test_database_error_does_not_crash_dashboard(self):
+        with patch('analytics.admin.get_recent_anomalies', side_effect=DatabaseError('table missing')):
+            response = self.client.get(DASHBOARD_URL)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'No Recent Anomalies')
         self.assertContains(response, '<div class="insight-value">0</div>')

@@ -1,4 +1,7 @@
+import logging
+
 from django.contrib import admin
+from django.db import DatabaseError
 from django.urls import path
 from django.utils.html import format_html
 
@@ -60,7 +63,11 @@ class PageViewAdmin(admin.ModelAdmin):
 
         range_param = request.GET.get('range', '30d')
         range_key = get_analytics_range_key(range_param)
-        recent_anomalies = get_recent_anomalies(limit=5)
+
+        try:
+            recent_anomalies = list(get_recent_anomalies(limit=5))
+        except DatabaseError:
+            recent_anomalies = []
 
         context = {
             **self.admin_site.each_context(request),
