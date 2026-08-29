@@ -12,6 +12,12 @@ from rest_framework.test import APIClient
 from .models import PageView
 from .utils import get_device_type
 from .geolocation import GeoResult, get_country_from_ip
+from .geoip_download import (
+    DEFAULT_GEOIP_DATABASE_PATH,
+    GeoIPDownloadError,
+    download_geolite2_country,
+    resolve_geoip_database_path,
+)
 from .services import (
     get_analytics_range_key,
     get_device_breakdown,
@@ -1091,3 +1097,95 @@ class GeolocationRobustnessTests(TestCase):
             result = get_country_from_ip(public_ipv6)
             self.assertEqual(result.country, 'France')
             self.assertEqual(result.country_code, 'FR')
+
+
+class GeoIPDownloadTests(TestCase):
+    def test_missing_credentials_fail_clearly(self):
+        with patch.dict('os.environ', {}, clear=True):
+            with self.assertRaises(GeoIPDownloadError) as ctx:
+                download_geolite2_country(dest_path='/tmp/geoip/GeoLite2-Country.mmdb')
+        self.assertIn('MAXMIND_ACCOUNT_ID', str(ctx.exception))
+        self.assertIn('MAXMIND_LICENSE_KEY', str(ctx.exception))
+
+    def test_missing_credentials_do_not_log_secrets(self):
+        env = {
+            'MAXMIND_ACCOUNT_ID': '',
+            'MAXMIND_LICENSE_KEY': 'super-secret-license-key',
+        }
+        with patch.dict('os.environ', env, clear=True):
+            with self.assertRaises(GeoIPDownloadError) as ctx:
+                download_geolite2_country()
+        self.assertNotIn('super-secret-license-key', str(ctx.exception))
+
+    def test_http_error_does_not_include_credentials(self):
+        import urllib.error
+
+        env = {
+            'MAXMIND_ACCOUNT_ID': '123456',
+            'MAXMIND_LICENSE_KEY': 'super-secret-license-key',
+        }
+        error = urllib.error.HTTPError(
+            url='https://download.maxmind.com/geoip/databases/GeoLite2-Country/download?suffix=tar.gz',
+            code=401,
+            msg='Unauthorized',
+            hdrs=None,
+            fp=None,
+        )
+        with patch.dict('os.environ', env, clear=True):
+            with patch('analytics.geoip_download.urllib.request.build_opener') as mock_opener:
+                mock_opener.return_value.open.side_effect = error
+                with self.assertRaises(GeoIPDownloadError) as ctx:
+                    download_geolite2_country(dest_path='/tmp/geoip/GeoLite2-Country.mmdb')
+        message = str(ctx.exception)
+        self.assertIn('HTTP 401', message)
+        self.assertNotIn('super-secret-license-key', message)
+        self.assertNotIn('123456', message)
+
+    def test_successful_download_writes_mmdb(self):
+        import io
+        import tarfile
+        from unittest.mock import MagicMock
+
+        archive_buf = io.BytesIO()
+        with tarfile.open(fileobj=archive_buf, mode='w:gz') as tar:
+            payload = b'MMDB-TEST-BYTES'
+            info = tarfile.TarInfo(name='GeoLite2-Country_20240101/GeoLite2-Country.mmdb')
+            info.size = len(payload)
+            tar.addfile(info, io.BytesIO(payload))
+        archive_bytes = archive_buf.getvalue()
+
+        response = MagicMock()
+        response.read.return_value = archive_bytes
+        response.__enter__.return_value = response
+        response.__exit__.return_value = False
+
+        dest = self._tmp_dest()
+        env = {
+            'MAXMIND_ACCOUNT_ID': '123456',
+            'MAXMIND_LICENSE_KEY': 'super-secret-license-key',
+        }
+        with patch.dict('os.environ', env, clear=True):
+            with patch('analytics.geoip_download.urllib.request.build_opener') as mock_opener:
+                mock_opener.return_value.open.return_value = response
+                written = download_geolite2_country(dest_path=dest)
+        import os
+
+        self.assertEqual(os.path.normpath(written), os.path.normpath(dest))
+        with open(dest, 'rb') as handle:
+            self.assertEqual(handle.read(), b'MMDB-TEST-BYTES')
+
+    def test_resolve_path_uses_render_default(self):
+        with patch.dict('os.environ', {}, clear=True):
+            self.assertEqual(resolve_geoip_database_path(''), DEFAULT_GEOIP_DATABASE_PATH)
+
+    def test_resolve_path_honors_explicit_setting(self):
+        self.assertEqual(
+            resolve_geoip_database_path('/custom/GeoLite2-Country.mmdb'),
+            '/custom/GeoLite2-Country.mmdb',
+        )
+
+    def _tmp_dest(self):
+        import tempfile
+
+        directory = tempfile.mkdtemp()
+        return f'{directory}/GeoLite2-Country.mmdb'
