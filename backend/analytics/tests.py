@@ -26,9 +26,17 @@ from .services import (
     get_range_bounds,
     get_range_overview,
     get_time_series,
+    get_country_traffic_share,
+    get_insights,
+    get_landing_pages,
+    get_page_traffic_share,
+    get_peak_day,
+    get_peak_hour,
     get_top_countries,
     get_top_pages,
     get_top_referrers,
+    get_traffic_sources,
+    get_views_per_visitor,
 )
 
 from portfolio.models import Profile
@@ -1189,3 +1197,46 @@ class GeoIPDownloadTests(TestCase):
 
         directory = tempfile.mkdtemp()
         return f'{directory}/GeoLite2-Country.mmdb'
+
+
+class Phase4BAnalyticsMetricsTests(TestCase):
+    def test_views_per_visitor(self):
+        s1 = uuid.uuid4()
+        s2 = uuid.uuid4()
+        PageView.objects.create(session_id=s1, path='/')
+        PageView.objects.create(session_id=s1, path='/')
+        PageView.objects.create(session_id=s2, path='/')
+        self.assertEqual(get_views_per_visitor('all'), 1.5)
+
+    def test_page_traffic_share(self):
+        PageView.objects.create(session_id=uuid.uuid4(), path='/a')
+        PageView.objects.create(session_id=uuid.uuid4(), path='/b')
+        PageView.objects.create(session_id=uuid.uuid4(), path='/a')
+        share = get_page_traffic_share('all')
+        self.assertEqual(share[0]['path'], '/a')
+        self.assertEqual(share[0]['percent'], 66.7)
+
+    def test_country_traffic_share(self):
+        PageView.objects.create(session_id=uuid.uuid4(), country_code='US', country='USA')
+        PageView.objects.create(session_id=uuid.uuid4(), country_code='IN', country='India')
+        PageView.objects.create(session_id=uuid.uuid4(), country_code='US', country='USA')
+        share = get_country_traffic_share('all')
+        self.assertEqual(share[0]['country_code'], 'US')
+        self.assertEqual(share[0]['percent'], 66.7)
+
+    def test_traffic_sources(self):
+        PageView.objects.create(session_id=uuid.uuid4(), referrer='')
+        PageView.objects.create(session_id=uuid.uuid4(), referrer='https://google.com')
+        PageView.objects.create(session_id=uuid.uuid4(), referrer='https://instagram.com')
+        sources = get_traffic_sources('all')
+        # Use a list comprehension to check if categories exist, order may vary
+        src_keys = [s['key'] for s in sources]
+        self.assertIn('direct', src_keys)
+        self.assertIn('search', src_keys)
+        self.assertIn('social', src_keys)
+
+    def test_peak_day_hour(self):
+        now = timezone.now()
+        PageView.objects.create(session_id=uuid.uuid4(), path='/', created_at=now)
+        self.assertNotEqual(get_peak_day('all'), '—')
+        self.assertNotEqual(get_peak_hour('all'), '—')

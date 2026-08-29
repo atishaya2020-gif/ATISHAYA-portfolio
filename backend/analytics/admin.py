@@ -6,14 +6,20 @@ from .models import PageView
 from .services import (
     VALID_RANGES,
     get_analytics_range_key,
+    get_country_traffic_share,
     get_daily_views,
     get_device_breakdown,
+    get_insights,
+    get_landing_pages,
     get_overview_stats,
+    get_page_traffic_share,
     get_recent_visits,
     get_time_series,
     get_top_countries,
     get_top_pages,
     get_top_referrers,
+    get_traffic_sources,
+    get_views_per_visitor,
 )
 
 
@@ -55,11 +61,15 @@ class PageViewAdmin(admin.ModelAdmin):
             'range_key': range_key,
             'valid_ranges': VALID_RANGES,
             'stats': get_overview_stats(range_key),
+            'views_per_visitor': get_views_per_visitor(range_key),
             'time_series': get_time_series(range_key),
-            'top_pages': get_top_pages(range_key),
-            'top_countries': get_top_countries(range_key),
+            'top_pages': get_page_traffic_share(range_key),
+            'top_countries': get_country_traffic_share(range_key),
             'devices': get_device_breakdown(range_key),
             'top_referrers': get_top_referrers(range_key),
+            'traffic_sources': get_traffic_sources(range_key),
+            'landing_pages': get_landing_pages(range_key),
+            'insights': get_insights(range_key),
             'daily_views': get_daily_views(),
             'recent_visits': get_recent_visits(range_key),
         }

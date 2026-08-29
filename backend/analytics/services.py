@@ -1,6 +1,7 @@
 from datetime import timedelta
+from urllib.parse import urlparse
 
-from django.db.models import Count
+from django.db.models import Count, Min
 from django.db.models.functions import TruncDate, TruncHour, TruncMonth, TruncWeek
 from django.utils import timezone
 
@@ -352,3 +353,205 @@ def get_recent_visits(range_key: str = '30d', limit: int = 20) -> list[dict]:
         }
         for row in rows
     ]
+
+
+def get_views_per_visitor(range_key: str = '30d') -> float:
+    qs = get_filtered_queryset(range_key)
+    total_views = qs.count()
+    unique_visitors = qs.values('session_id').distinct().count()
+    if unique_visitors == 0:
+        return 0.0
+    return round(total_views / unique_visitors, 1)
+
+
+def get_page_traffic_share(range_key: str = '30d', limit: int = 10) -> list[dict]:
+    qs = get_filtered_queryset(range_key)
+    total = qs.count()
+    rows = (
+        qs.values('path')
+        .annotate(views=Count('id'))
+        .order_by('-views', 'path')[:limit]
+    )
+    return [
+        {
+            'path': row['path'],
+            'views': row['views'],
+            'percent': round(row['views'] * 100 / total, 1) if total else 0.0,
+        }
+        for row in rows
+    ]
+
+
+def get_country_traffic_share(range_key: str = '30d', limit: int = 10) -> list[dict]:
+    qs = get_filtered_queryset(range_key)
+    country_total = qs.exclude(country_code='').count()
+    rows = (
+        qs.exclude(country_code='')
+        .values('country_code', 'country')
+        .annotate(views=Count('id'))
+        .order_by('-views')[:limit]
+    )
+    return [
+        {
+            'country_code': row['country_code'],
+            'country': row['country'],
+            'views': row['views'],
+            'percent': round(row['views'] * 100 / country_total, 1) if country_total else 0.0,
+        }
+        for row in rows
+    ]
+
+
+_SEARCH_DOMAINS = {
+    'google.com', 'www.google.com', 'google.co.uk', 'google.de',
+    'google.fr', 'google.co.in', 'google.ca', 'google.com.au',
+    'bing.com', 'www.bing.com',
+    'duckduckgo.com', 'www.duckduckgo.com',
+    'yahoo.com', 'search.yahoo.com',
+    'brave.com', 'www.brave.com',
+    'ecosia.org', 'www.ecosia.org',
+    'yandex.com', 'yandex.ru',
+    'baidu.com', 'www.baidu.com',
+    'sogou.com',
+}
+
+_SOCIAL_DOMAINS = {
+    'facebook.com', 'www.facebook.com', 'm.facebook.com',
+    'instagram.com', 'www.instagram.com',
+    'linkedin.com', 'www.linkedin.com',
+    'x.com', 'twitter.com', 'www.x.com', 'www.twitter.com',
+    't.co',
+    'reddit.com', 'www.reddit.com', 'old.reddit.com',
+    'youtube.com', 'www.youtube.com',
+    'tiktok.com', 'www.tiktok.com',
+    'threads.net', 'www.threads.net',
+    'mastodon.social',
+    'bsky.app',
+    'pinterest.com', 'www.pinterest.com',
+}
+
+
+def _classify_referrer(referrer: str) -> str:
+    if not referrer:
+        return 'direct'
+    try:
+        host = urlparse(referrer).hostname or ''
+    except Exception:
+        return 'referral'
+    host = host.lower().strip().rstrip('.')
+    if host in _SEARCH_DOMAINS:
+        return 'search'
+    if host in _SOCIAL_DOMAINS:
+        return 'social'
+    return 'referral'
+
+
+def get_traffic_sources(range_key: str = '30d') -> list[dict]:
+    qs = get_filtered_queryset(range_key)
+    total = qs.count()
+    if total == 0:
+        return []
+    classifications = {}
+    for row in qs.values_list('referrer', flat=True):
+        cat = _classify_referrer(row or '')
+        classifications[cat] = classifications.get(cat, 0) + 1
+    labels = {
+        'direct': 'Direct',
+        'search': 'Search',
+        'social': 'Social',
+        'referral': 'Referral',
+    }
+    return [
+        {
+            'source': labels[key],
+            'key': key,
+            'views': count,
+            'percent': round(count * 100 / total, 1),
+        }
+        for key, count in sorted(classifications.items(), key=lambda x: -x[1])
+    ]
+
+
+def get_peak_day(range_key: str = '30d') -> str:
+    qs = get_filtered_queryset(range_key)
+    row = (
+        qs.annotate(bucket=TruncDate('created_at'))
+        .values('bucket')
+        .annotate(views=Count('id'))
+        .order_by('-views')
+        .first()
+    )
+    if not row or not row['bucket']:
+        return '—'
+    bucket = row['bucket']
+    if hasattr(bucket, 'strftime'):
+        return bucket.strftime('%a %b %d')
+    return str(bucket)
+
+
+def get_peak_hour(range_key: str = '30d') -> str:
+    qs = get_filtered_queryset(range_key)
+    row = (
+        qs.annotate(bucket=TruncHour('created_at'))
+        .values('bucket')
+        .annotate(views=Count('id'))
+        .order_by('-views')
+        .first()
+    )
+    if not row or not row['bucket']:
+        return '—'
+    bucket = row['bucket']
+    if timezone.is_aware(bucket):
+        bucket = timezone.localtime(bucket)
+    if hasattr(bucket, 'strftime'):
+        return bucket.strftime('%H:00')
+    return str(bucket)
+
+
+def get_landing_pages(range_key: str = '30d', limit: int = 10) -> list[dict]:
+    qs = get_filtered_queryset(range_key)
+    rows = (
+        qs.values('session_id')
+        .annotate(first_view=Min('created_at'))
+        .order_by('first_view')
+    )
+    first_views = {}
+    for row in rows:
+        first_views[row['session_id']] = row['first_view']
+    if not first_views:
+        return []
+    landing_qs = qs.filter(
+        created_at__in=list(first_views.values()),
+        session_id__in=list(first_views.keys()),
+    )
+    page_counts: dict[str, int] = {}
+    for pv in landing_qs:
+        key = (pv.session_id, pv.path)
+        if pv.created_at == first_views.get(pv.session_id):
+            page_counts[pv.path] = page_counts.get(pv.path, 0) + 1
+    total_sessions = len(first_views)
+    sorted_pages = sorted(page_counts.items(), key=lambda x: -x[1])[:limit]
+    return [
+        {
+            'path': path,
+            'views': count,
+            'percent': round(count * 100 / total_sessions, 1) if total_sessions else 0.0,
+        }
+        for path, count in sorted_pages
+    ]
+
+
+def get_insights(range_key: str = '30d') -> dict:
+    top_pages = get_page_traffic_share(range_key, limit=1)
+    top_countries = get_country_traffic_share(range_key, limit=1)
+    top_device_rows = get_device_breakdown(range_key)
+    top_device = next(
+        (d for d in top_device_rows if d['views'] > 0), None
+    )
+    return {
+        'top_page': top_pages[0]['path'] if top_pages else '—',
+        'top_country': top_countries[0]['country'] or top_countries[0]['country_code'] if top_countries else '—',
+        'top_device': top_device['device'] if top_device else '—',
+        'peak_day': get_peak_day(range_key),
+        'peak_hour': get_peak_hour(range_key),
+    }

@@ -6,194 +6,118 @@
   {{ block.super }}
   <style>
     :root {
-      --dash-bg: var(--body-bg, #ffffff);
-      --dash-fg: var(--body-fg, #1e293b);
-      --dash-muted: var(--body-quiet-color, #64748b);
-      --dash-border: var(--hairline-color, #e2e8f0);
-      --dash-card-bg: var(--body-bg, #ffffff);
-      --dash-primary: var(--primary-color, #2563eb);
-      --dash-accent: #0d9488;
-      --dash-hover-bg: rgba(0, 0, 0, 0.02);
+      --bg: #080808;
+      --surface: #111111;
+      --card-bg: #0e0e0e;
+      --card-border: #1c1c1c;
+      --text: #ffffff;
+      --text-muted: #8a8a8a;
+      --accent: #e11d2e;
     }
 
     .analytics-dashboard {
       max-width: 1200px;
       margin: 0 auto;
-      padding: 8px 0 40px 0;
-      color: var(--dash-fg);
+      padding: 24px 0 60px;
+      color: var(--text);
+      font-family: "Inter", system-ui, sans-serif;
     }
 
     .dashboard-header-bar {
       display: flex;
-      flex-wrap: wrap;
       justify-content: space-between;
       align-items: center;
-      gap: 16px;
-      margin: 8px 0 20px 0;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--dash-border);
+      margin-bottom: 32px;
     }
 
-    .dashboard-header-bar .header-title h1 {
-      margin: 0 0 4px 0;
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: var(--dash-fg);
-    }
-
-    .dashboard-header-bar .header-title p {
+    .header-title h1 {
       margin: 0;
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -0.05em;
+      text-transform: uppercase;
+    }
+
+    .header-title p {
+      margin: 4px 0 0;
       font-size: 13px;
-      color: var(--dash-muted);
+      color: var(--text-muted);
     }
 
     .range-segmented-control {
-      display: inline-flex;
-      align-items: stretch;
-      background: rgba(0, 0, 0, 0.04);
-      padding: 3px;
-      border-radius: 8px;
-      gap: 0;
-      border: 1px solid var(--dash-border);
-      overflow: hidden;
+      display: flex;
+      background: var(--surface);
+      padding: 4px;
+      border-radius: 6px;
+      border: 1px solid var(--card-border);
     }
 
     .range-btn {
-      display: inline-block;
-      padding: 6px 14px;
-      border-radius: 5px;
-      background: transparent;
-      color: var(--dash-muted);
+      padding: 6px 12px;
+      border-radius: 4px;
+      color: var(--text-muted);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
       text-decoration: none;
-      font-size: 12px;
-      font-weight: 600;
-      transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-      line-height: 1.4;
-      text-align: center;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-
-    .range-btn:hover {
-      color: var(--dash-primary);
-      text-decoration: none;
-      background: rgba(0, 0, 0, 0.04);
+      transition: all 0.2s;
     }
 
     .range-btn.active {
-      background: var(--dash-card-bg);
-      color: var(--dash-primary) !important;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
-      font-weight: 700;
-    }
-
-    .range-btn.active:hover {
-      background: var(--dash-card-bg);
-    }
-
-    .range-btn:focus-visible {
-      outline: 2px solid var(--dash-primary);
-      outline-offset: 1px;
+      background: var(--card-border);
+      color: var(--text);
     }
 
     .metric-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      grid-template-columns: repeat(4, 1fr);
       gap: 16px;
-      margin-bottom: 20px;
+      margin-bottom: 32px;
     }
 
     .metric-card {
-      background: var(--dash-card-bg);
-      border: 1px solid var(--dash-border);
-      border-radius: 10px;
-      padding: 18px 20px;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      min-height: 90px;
-      box-sizing: border-box;
-      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-    }
-
-    .metric-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 16px rgba(37, 99, 235, 0.08);
-      border-color: rgba(37, 99, 235, 0.22);
-    }
-
-    .metric-card .card-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 10px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      padding: 20px;
     }
 
     .metric-card .label {
-      color: var(--dash-muted);
-      font-size: 11px;
-      font-weight: 700;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
-
-    .metric-card .card-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: 6px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(37, 99, 235, 0.08);
-      color: var(--dash-primary);
-      flex-shrink: 0;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      display: block;
     }
 
     .metric-card .value {
-      font-size: 26px;
-      font-weight: 700;
-      line-height: 1.2;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      letter-spacing: -0.02em;
+      font-size: 24px;
+      font-weight: 900;
     }
 
     .dashboard-section {
-      background: var(--dash-card-bg);
-      border: 1px solid var(--dash-border);
-      border-radius: 10px;
-      margin-bottom: 20px;
-      overflow: hidden;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      margin-bottom: 24px;
     }
 
     .dashboard-section-header {
-      padding: 14px 20px;
-      border-bottom: 1px solid var(--dash-border);
-      background: rgba(0, 0, 0, 0.015);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--card-border);
     }
 
     .dashboard-section-header h2 {
-      font-size: 12px;
-      font-weight: 700;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.15em;
       margin: 0;
-      color: var(--dash-fg);
+      color: var(--text-muted);
     }
 
     .chart-container {
-      position: relative;
-      height: 260px;
-      width: 100%;
-      padding: 16px 20px;
-      box-sizing: border-box;
+      height: 300px;
+      padding: 20px;
     }
 
     .dashboard-section table {
@@ -202,99 +126,24 @@
     }
 
     .dashboard-section th {
-      padding: 10px 20px;
+      padding: 12px 20px;
       text-align: left;
-      border-bottom: 1px solid var(--dash-border);
-      font-size: 11px;
-      font-weight: 700;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--dash-muted);
-      background: rgba(0, 0, 0, 0.01);
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--card-border);
     }
 
     .dashboard-section td {
       padding: 12px 20px;
-      text-align: left;
-      border-bottom: 1px solid var(--dash-border);
       font-size: 13px;
-      color: var(--dash-fg);
+      border-bottom: 1px solid var(--card-border);
     }
 
-    .dashboard-section tr:last-child td {
-      border-bottom: none;
-    }
+    .num { text-align: right; font-family: "JetBrains Mono", monospace; }
 
-    .dashboard-section tbody tr:hover {
-      background: var(--dash-hover-bg);
-    }
-
-    .dashboard-section th.num, .dashboard-section td.num {
-      text-align: right;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .cell-truncate {
-      max-width: 280px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .empty-state {
-      color: var(--dash-muted);
-      font-size: 13px;
-      padding: 28px 20px;
-      text-align: center;
-      margin: 0;
-      font-style: italic;
-    }
-
-    .two-col {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-
-    .section-group-title {
-      font-size: 13px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--dash-muted);
-      margin: 24px 0 12px 0;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .section-group-title::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: var(--dash-border);
-    }
-
-    @media (max-width: 800px) {
-      .two-col {
-        grid-template-columns: 1fr;
-      }
-      .dashboard-header-bar {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-      .range-segmented-control {
-        width: 100%;
-        overflow-x: auto;
-      }
-      .range-btn {
-        flex: 1;
-      }
-      .cell-truncate {
-        max-width: 180px;
-      }
-    }
   </style>
 {% endblock %}
 
@@ -326,7 +175,7 @@
     </nav>
   </div>
 
-  <div class="metric-grid">
+    <div class="metric-grid">
     <div class="metric-card">
       <div class="card-top">
         <span class="label">Views</span>
@@ -349,6 +198,16 @@
 
     <div class="metric-card">
       <div class="card-top">
+        <span class="label">Views / Visitor</span>
+        <span class="card-icon" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </span>
+      </div>
+      <div class="value">{{ views_per_visitor }}</div>
+    </div>
+
+    <div class="metric-card">
+      <div class="card-top">
         <span class="label">Avg Views / Day</span>
         <span class="card-icon" aria-hidden="true">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -356,15 +215,18 @@
       </div>
       <div class="value">{{ stats.avg_views_per_day }}</div>
     </div>
+  </div>
 
-    <div class="metric-card">
-      <div class="card-top">
-        <span class="label">Top Page</span>
-        <span class="card-icon" aria-hidden="true">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        </span>
-      </div>
-      <div class="value" title="{{ stats.top_page }}">{{ stats.top_page }}</div>
+  <div class="dashboard-section">
+    <div class="dashboard-section-header">
+      <h2>Insights</h2>
+    </div>
+    <div style="padding: 16px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px;">
+        <div><div class="label">Top Page</div><div style="font-size: 14px;">{{ insights.top_page }}</div></div>
+        <div><div class="label">Top Country</div><div style="font-size: 14px;">{{ insights.top_country }}</div></div>
+        <div><div class="label">Top Device</div><div style="font-size: 14px;">{{ insights.top_device }}</div></div>
+        <div><div class="label">Peak Day</div><div style="font-size: 14px;">{{ insights.peak_day }}</div></div>
+        <div><div class="label">Peak Hour</div><div style="font-size: 14px;">{{ insights.peak_hour }}</div></div>
     </div>
   </div>
 
@@ -399,13 +261,14 @@
       {% if top_pages %}
         <table>
           <thead>
-            <tr><th>Path</th><th class="num">Views</th></tr>
+            <tr><th>Path</th><th class="num">Views</th><th class="num">Share</th></tr>
           </thead>
           <tbody>
             {% for page in top_pages %}
               <tr>
                 <td class="cell-truncate" title="{{ page.path }}">{{ page.path }}</td>
                 <td class="num">{{ page.views }}</td>
+                <td class="num">{{ page.percent }}%</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -417,24 +280,25 @@
 
     <div class="dashboard-section">
       <div class="dashboard-section-header">
-        <h2>Top Referrers</h2>
+        <h2>Traffic Sources</h2>
       </div>
-      {% if top_referrers %}
+      {% if traffic_sources %}
         <table>
           <thead>
-            <tr><th>Referrer</th><th class="num">Views</th></tr>
+            <tr><th>Source</th><th class="num">Views</th><th class="num">Share</th></tr>
           </thead>
           <tbody>
-            {% for ref in top_referrers %}
+            {% for source in traffic_sources %}
               <tr>
-                <td class="cell-truncate" title="{{ ref.referrer }}">{{ ref.referrer }}</td>
-                <td class="num">{{ ref.views }}</td>
+                <td>{{ source.source }}</td>
+                <td class="num">{{ source.views }}</td>
+                <td class="num">{{ source.percent }}%</td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
       {% else %}
-        <p class="empty-state">No referrer data in selected range.</p>
+        <p class="empty-state">No source data.</p>
       {% endif %}
     </div>
   </div>
@@ -449,13 +313,14 @@
       {% if top_countries %}
         <table>
           <thead>
-            <tr><th>Country</th><th class="num">Views</th></tr>
+            <tr><th>Country</th><th class="num">Views</th><th class="num">Share</th></tr>
           </thead>
           <tbody>
             {% for c in top_countries %}
               <tr>
                 <td>{{ c.country|default:c.country_code }} ({{ c.country_code }})</td>
                 <td class="num">{{ c.views }}</td>
+                <td class="num">{{ c.percent }}%</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -542,8 +407,8 @@
             {
               label: "Views",
               data: viewsData,
-              borderColor: "#2563eb",
-              backgroundColor: isLowData ? "rgba(37, 99, 235, 0.04)" : "rgba(37, 99, 235, 0.08)",
+              borderColor: "#e11d2e",
+              backgroundColor: isLowData ? "rgba(225, 29, 46, 0.04)" : "rgba(225, 29, 46, 0.08)",
               borderWidth: 2,
               fill: true,
               tension: 0.25,
@@ -553,8 +418,8 @@
             {
               label: "Unique Visitors",
               data: visitorsData,
-              borderColor: "#0d9488",
-              backgroundColor: isLowData ? "rgba(13, 148, 136, 0.04)" : "rgba(13, 148, 136, 0.08)",
+              borderColor: "#8a8a8a",
+              backgroundColor: isLowData ? "rgba(138, 138, 138, 0.04)" : "rgba(138, 138, 138, 0.08)",
               borderWidth: 2,
               fill: true,
               tension: 0.25,
